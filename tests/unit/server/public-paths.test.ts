@@ -1,0 +1,132 @@
+import {
+  hasSessionCookie,
+  isBlockedPath,
+  isPublicPath,
+  SESSION_COOKIE_NAMES,
+} from "@/server/http/public-paths";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("isPublicPath", () => {
+  it.each([
+    "/",
+    "/sign-in",
+    "/sign-up",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/legal/privacy",
+    "/legal/terms",
+    "/api/health",
+    "/api/auth/sign-in",
+    "/api/auth/callback/github",
+    "/.well-known/security.txt",
+    "/_next/static/chunks/main-abc.js",
+    "/_next/static/css/app.css",
+    "/_next/image",
+    "/favicon.ico",
+    "/icon.png",
+    "/icon1.png",
+    "/icon/small",
+    "/apple-icon.png",
+    "/manifest.webmanifest",
+    "/brand/mascot/welcome.webp",
+    "/sign-in/",
+  ])("allows %s", (path) => {
+    expect(isPublicPath(path)).toBe(true);
+  });
+
+  it.each([
+    "/w/acme",
+    "/w/acme/b/1",
+    "/api/tasks",
+    "/api",
+    "/api/healthz",
+    "/api/health/deep",
+    "/api/authz",
+    "/sign-in/extra",
+    "/legal",
+    "/settings",
+    "/_next/data/build/index.json",
+    "/_next/static",
+    "/_next/imagex",
+    "/favicon.icox",
+    "/iconography",
+    "/icon.png/extra",
+    "/brand",
+    "/brandx/logo.png",
+    "/.well-known/other",
+  ])("denies %s", (path) => {
+    expect(isPublicPath(path)).toBe(false);
+  });
+
+  it("serves /dev/ui outside production only", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(isPublicPath("/dev/ui")).toBe(true);
+    vi.stubEnv("NODE_ENV", "test");
+    expect(isPublicPath("/dev/ui")).toBe(true);
+    vi.stubEnv("NODE_ENV", "production");
+    expect(isPublicPath("/dev/ui")).toBe(false);
+  });
+});
+
+describe("isBlockedPath", () => {
+  it.each([
+    "/.env",
+    "/.env.local",
+    "/.git/config",
+    "/a/.hidden/b",
+    "/..",
+    "/a/../b",
+    "/%2eenv",
+    "/%2E%2e/secret",
+    "/.well-known/.env",
+    "/backup.zip",
+    "/BACKUP.ZIP",
+    "/dump.tar",
+    "/dump.gz",
+    "/db.bak",
+    "/db.sql",
+    "/prod.env",
+    "/_next/static/x.js.map",
+    "/%",
+    "/a%2f.env",
+  ])("blocks %s", (path) => {
+    expect(isBlockedPath(path)).toBe(true);
+  });
+
+  it.each([
+    "/",
+    "/.well-known/security.txt",
+    "/sign-in",
+    "/w/acme/b/1",
+    "/brand/mascot/welcome.webp",
+    "/api/health",
+    "/legal/terms",
+  ])("allows %s", (path) => {
+    expect(isBlockedPath(path)).toBe(false);
+  });
+});
+
+describe("hasSessionCookie", () => {
+  const jar = (...names: string[]) => ({ has: (name: string) => names.includes(name) });
+
+  it("names both the plain and the Secure-prefixed Better Auth cookie", () => {
+    expect(SESSION_COOKIE_NAMES).toEqual([
+      "better-auth.session_token",
+      "__Secure-better-auth.session_token",
+    ]);
+  });
+
+  it("accepts either cookie", () => {
+    expect(hasSessionCookie(jar("better-auth.session_token"))).toBe(true);
+    expect(hasSessionCookie(jar("__Secure-better-auth.session_token"))).toBe(true);
+  });
+
+  it("rejects other cookies and an empty jar", () => {
+    expect(hasSessionCookie(jar("theme", "session"))).toBe(false);
+    expect(hasSessionCookie(jar())).toBe(false);
+  });
+});
