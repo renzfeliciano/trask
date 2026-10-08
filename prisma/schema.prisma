@@ -1,0 +1,322 @@
+// TRASK tenant schema. Connection URLs live in prisma.config.ts (Prisma 7), not here.
+//
+// Tenancy rules enforced by the database, not by application code:
+//   * every tenant table carries workspaceId;
+//   * every parent a child points at exposes @@unique([id, workspaceId]), and the child's foreign key
+//     is (parentId, workspaceId) -> (id, workspaceId), so a link across workspaces is rejected by Postgres;
+//   * deleting a workspace cascades to everything it owns; deleting a user nulls author/assignee/actor
+//     references ("Deleted user") instead of deleting work.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ColumnKind {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// --- Identity ---------------------------------------------------------------------------------------------
+// Better Auth's Session/Account/Verification tables arrive with Phase 1 as an additive migration.
+
+model User {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  email         String   @unique
+  name          String
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  workspacesCreated Workspace[]       @relation("WorkspaceCreatedBy")
+  memberships       WorkspaceMember[]
+  boardsCreated     Board[]           @relation("BoardCreatedBy")
+  tasksAssigned     Task[]            @relation("TaskAssignee")
+  tasksCreated      Task[]            @relation("TaskCreatedBy")
+  comments          Comment[]
+  attachments       Attachment[]
+  activities        Activity[]
+  auditEvents       AuditEvent[]
+}
+
+// --- Tenancy ----------------------------------------------------------------------------------------------
+
+model Workspace {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  name         String
+  slug         String   @unique
+  taskSequence Int      @default(0)
+  createdById  String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  createdBy User? @relation("WorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  members        WorkspaceMember[]
+  boards         Board[]
+  columns        Column[]
+  tasks          Task[]
+  labels         Label[]
+  taskLabels     TaskLabel[]
+  checklistItems ChecklistItem[]
+  comments       Comment[]
+  attachments    Attachment[]
+  activities     Activity[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  workspaceId String        @db.Uuid
+  userId      String        @db.Uuid
+  role        WorkspaceRole
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, workspaceId])
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// --- Work -------------------------------------------------------------------------------------------------
+
+model Board {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String
+  description String?
+  position    String
+  archivedAt  DateTime? @db.Timestamptz(3)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("BoardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  columns Column[]
+  tasks   Task[]
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, archivedAt])
+}
+
+model Column {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  workspaceId String     @db.Uuid
+  boardId     String     @db.Uuid
+  name        String
+  position    String
+  kind        ColumnKind
+  wipLimit    Int?
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board     Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  tasks Task[]
+
+  @@unique([id, workspaceId])
+  @@index([boardId, position])
+}
+
+model Task {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  workspaceId  String       @db.Uuid
+  boardId      String       @db.Uuid
+  columnId     String       @db.Uuid
+  number       Int
+  title        String
+  description  String?
+  priority     TaskPriority @default(NONE)
+  position     String
+  assigneeId   String?      @db.Uuid
+  dueAt        DateTime?    @db.Timestamptz(3)
+  startAt      DateTime?    @db.Timestamptz(3)
+  completedAt  DateTime?    @db.Timestamptz(3)
+  estimate     Int?
+  parentTaskId String?      @db.Uuid
+  archivedAt   DateTime?    @db.Timestamptz(3)
+  createdById  String?      @db.Uuid
+  version      Int          @default(1)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board     Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  // NoAction (not Cascade): deleting a column that still holds tasks is refused. Deleting a board or workspace
+  // still works because the tasks are removed by the board/workspace cascade in the same statement.
+  column    Column    @relation(fields: [columnId, workspaceId], references: [id, workspaceId], onDelete: NoAction)
+  assignee  User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  // The migration narrows this to ON DELETE SET NULL ("parentTaskId") so workspaceId is never nulled.
+  parentTask Task?    @relation("TaskSubtasks", fields: [parentTaskId, workspaceId], references: [id, workspaceId], onDelete: SetNull)
+
+  subtasks       Task[]          @relation("TaskSubtasks")
+  labels         TaskLabel[]
+  checklistItems ChecklistItem[]
+  comments       Comment[]
+  attachments    Attachment[]
+
+  @@unique([id, workspaceId])
+  @@unique([workspaceId, number])
+  @@index([columnId, position])
+  @@index([boardId])
+  @@index([parentTaskId])
+  @@index([workspaceId, assigneeId])
+  @@index([workspaceId, dueAt])
+}
+
+model Label {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  color       String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  tasks TaskLabel[]
+
+  @@unique([id, workspaceId])
+  @@unique([workspaceId, name])
+}
+
+model TaskLabel {
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  labelId     String   @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  label     Label     @relation(fields: [labelId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+}
+
+model ChecklistItem {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  content     String
+  isDone      Boolean  @default(false)
+  position    String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+
+  @@unique([id, workspaceId])
+  @@index([taskId, position])
+}
+
+model Comment {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  workspaceId String    @db.Uuid
+  taskId      String    @db.Uuid
+  authorId    String?   @db.Uuid
+  body        String
+  editedAt    DateTime? @db.Timestamptz(3)
+  deletedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  author    User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([id, workspaceId])
+  @@index([taskId, createdAt])
+}
+
+model Attachment {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  uploaderId  String?  @db.Uuid
+  storageKey  String
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  sha256      String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  uploader  User?     @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@unique([id, workspaceId])
+  @@index([taskId])
+}
+
+// --- Audit (append-only: no updatedAt, trask_app has no UPDATE/DELETE) -------------------------------------
+
+// boardId/taskId are plain ids, not foreign keys: the history must outlive the board or task it describes.
+model Activity {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @db.Uuid
+  boardId     String?  @db.Uuid
+  taskId      String?  @db.Uuid
+  actorId     String?  @db.Uuid
+  type        String
+  entityType  String
+  entityId    String   @db.Uuid
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([id, workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([taskId, createdAt])
+}
+
+// Security trail. workspaceId is a plain id (no foreign key) so the trail survives workspace deletion,
+// and the table is outside row-level security: INSERT-only grants are its protection.
+model AuditEvent {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  workspaceId   String?  @db.Uuid
+  actorId       String?  @db.Uuid
+  action        String
+  entityType    String?
+  entityId      String?
+  ip            String?
+  userAgentHash String?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}

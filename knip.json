@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["eslint-alias-resolver.cjs"],
-  "ignoreBinaries": ["playwright", "prisma", "tsx"]
+  "ignoreDependencies": ["@prisma/client", "pg"],
+  "ignoreBinaries": ["playwright", "tsx"]
 }

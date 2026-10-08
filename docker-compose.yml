@@ -1,0 +1,20 @@
+# Local and CI test Postgres. Matches production's major version (Postgres 18).
+# `pnpm db:test:up` starts it and waits until it accepts connections.
+services:
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_test
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    # Throwaway data: every `up` starts from a clean cluster and re-runs init.sql.
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

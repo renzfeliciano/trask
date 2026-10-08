@@ -135,4 +135,34 @@ describe("lint guardrails", () => {
     );
     expect(messages.map((m) => m.ruleId)).not.toContain("boundaries/dependencies");
   });
+
+  it("keeps the generated Prisma client away from everything but the db layer and repositories", async () => {
+    const code =
+      'import { PrismaClient } from "@/generated/prisma/client";\nexport const x = PrismaClient;\n';
+    for (const filePath of [
+      "src/features/tasks/components/x.tsx",
+      "src/features/tasks/actions/x.ts",
+      "src/app/page.tsx",
+      "src/components/ui/x.tsx",
+      "src/server/x/service.ts",
+    ]) {
+      const messages = await ruleIds(code, filePath);
+      expect(
+        messages.map((m) => m.ruleId),
+        filePath,
+      ).toContain("boundaries/dependencies");
+    }
+  });
+
+  it("lets the db layer and repositories import the generated Prisma client", async () => {
+    const code =
+      'import { PrismaClient } from "@/generated/prisma/client";\nexport const x = PrismaClient;\n';
+    for (const filePath of ["src/db/client.ts", "src/server/x/repository.ts"]) {
+      const messages = await ruleIds(code, filePath);
+      expect(
+        messages.map((m) => m.ruleId),
+        filePath,
+      ).not.toContain("boundaries/dependencies");
+    }
+  });
 });
