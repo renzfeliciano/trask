@@ -10,7 +10,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TRASK",
-  description: "Work should move, not become clutter.",
+  description: "Work moves here.",
 };
 
 export const viewport: Viewport = {

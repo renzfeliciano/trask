@@ -21,6 +21,8 @@
   --ring: #7c3aed;
 
   --primary: #7c3aed;
+  /* Hover fills are solid shades, not opacity: a faded fill lets the page show through and drops text contrast. */
+  --primary-hover: #6d28d9;
   --primary-foreground: #ffffff;
   --primary-text: #7c3aed;
   --secondary: #a78bfa;
@@ -32,6 +34,7 @@
   --success: #16a34a;
   --warning: #ea580c;
   --danger: #dc2626;
+  --danger-hover: #b91c1c;
   --danger-foreground: #ffffff;
   --info: #2563eb;
 
@@ -76,6 +79,8 @@
   --success: #4ade80;
   --warning: #fb923c;
   --danger: #f87171;
+  /* Dark-mode danger carries dark text, so its hover lightens instead of darkening. */
+  --danger-hover: #fca5a5;
   --danger-foreground: #0f0d1f;
   --info: #60a5fa;
 
@@ -120,6 +125,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
@@ -130,6 +136,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
   --color-danger-foreground: var(--danger-foreground);
   --color-info: var(--info);
   --color-label-foreground: var(--label-foreground);

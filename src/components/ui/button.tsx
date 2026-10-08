@@ -5,18 +5,20 @@ import { cn } from "@/lib/cn";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "default" | "icon";
 
-// Flat fills and 1 px borders: no shadows, no gradients. Hover darkens or tints; focus uses the global ring.
+// Flat fills and 1 px borders: no shadows, no gradients. Hover swaps to a solid shade (checked for
+// contrast like every other pair) or a tint; focus uses the global ring.
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+  primary: "bg-primary text-primary-foreground hover:bg-primary-hover",
   secondary: "border border-border bg-surface text-foreground hover:bg-accent/40",
   ghost: "text-foreground hover:bg-accent/40",
-  danger: "bg-danger text-danger-foreground hover:bg-danger/90",
+  danger: "bg-danger text-danger-foreground hover:bg-danger-hover",
 };
 
-// Phones get 44 px touch targets; pointer screens from `md` up get the denser 36 px.
+// 44 px touch targets everywhere a finger may be the pointer (phones and tablets); only a fine pointer
+// (mouse, trackpad) on a wide screen gets the denser 36 px.
 const SIZES: Record<ButtonSize, string> = {
-  default: "h-11 px-4 md:h-9 md:px-3.5",
-  icon: "size-11 md:size-9",
+  default: "h-11 px-4 pointer-fine:md:h-9 pointer-fine:md:px-3.5",
+  icon: "size-11 pointer-fine:md:size-9",
 };
 
 type ButtonProps = ComponentProps<"button"> & {

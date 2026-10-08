@@ -64,7 +64,7 @@ export default function UiReferencePage() {
       <Section title="Colour tokens">
         <ul className="grid grid-cols-3 gap-3 md:grid-cols-6">
           {SWATCHES.map(([name, fill]) => (
-            <li key={name} className="text-xs">
+            <li key={name} className="text-sm">
               <span className={`block h-12 rounded-md border border-border ${fill}`} />
               <code className="mt-1.5 block font-mono text-muted-foreground">--{name}</code>
             </li>
@@ -141,7 +141,7 @@ export default function UiReferencePage() {
               <Mascot state={state} size="md" />
               <span className="flex items-center gap-2">
                 <Mascot state={state} size="sm" />
-                <code className="font-mono text-xs text-muted-foreground">{state}</code>
+                <code className="font-mono text-sm text-muted-foreground">{state}</code>
               </span>
             </li>
           ))}

@@ -21,6 +21,9 @@ export function Toaster() {
       theme={resolvedTheme === "dark" ? "dark" : "light"}
       position="bottom-right"
       style={TOKENS}
+      // viewport-fit=cover puts the page under the home indicator; keep toasts above it.
+      offset={{ bottom: "max(24px, env(safe-area-inset-bottom))" }}
+      mobileOffset={{ bottom: "max(16px, env(safe-area-inset-bottom))" }}
     />
   );
 }

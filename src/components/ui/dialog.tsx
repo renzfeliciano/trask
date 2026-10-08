@@ -30,7 +30,7 @@ export function DialogContent({
         {children}
         <DialogPrimitive.Close
           aria-label="Close"
-          className="absolute top-2 right-2 inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground md:size-9"
+          className="absolute top-2 right-2 inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground pointer-fine:md:size-9"
         >
           <XIcon className="size-4" aria-hidden="true" />
         </DialogPrimitive.Close>

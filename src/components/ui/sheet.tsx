@@ -9,15 +9,24 @@ export const Sheet = SheetPrimitive.Root;
 export const SheetTrigger = SheetPrimitive.Trigger;
 
 // Bottom is the phone default (spec §5: task detail is a bottom sheet); "right" is the desktop drawer.
+// The page uses viewport-fit=cover, so each side pads itself clear of the notch and home indicator.
 const SIDES = {
-  bottom: cn(
-    "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-lg border-t pb-[max(1.25rem,env(safe-area-inset-bottom))]",
-    "data-[state=closed]:animate-sheet-down data-[state=open]:animate-sheet-up",
-  ),
-  right: cn(
-    "inset-y-0 right-0 h-dvh w-full max-w-md border-l pb-5",
-    "data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in",
-  ),
+  bottom: {
+    panel: cn(
+      "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-lg border-t pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]",
+      "data-[state=closed]:animate-sheet-down data-[state=open]:animate-sheet-up",
+    ),
+    close: "top-2",
+  },
+  right: {
+    panel: cn(
+      "inset-y-0 right-0 h-dvh w-full max-w-md border-l pr-[max(1.25rem,env(safe-area-inset-right))]",
+      "pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]",
+      "data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in",
+    ),
+    close:
+      "top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))]",
+  },
 } as const;
 
 export function SheetContent({
@@ -26,6 +35,8 @@ export function SheetContent({
   side = "bottom",
   ...props
 }: ComponentProps<typeof SheetPrimitive.Content> & { side?: keyof typeof SIDES }) {
+  // eslint-disable-next-line security/detect-object-injection -- typed union key, not user input
+  const layout = SIDES[side];
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
@@ -33,9 +44,8 @@ export function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         className={cn(
-          "fixed z-50 flex flex-col gap-4 overflow-y-auto border-border bg-surface px-5 pt-5 text-foreground shadow-(--shadow-3)",
-          // eslint-disable-next-line security/detect-object-injection -- typed union key, not user input
-          SIDES[side],
+          "fixed z-50 flex flex-col gap-4 overflow-y-auto border-border bg-surface px-5 text-foreground shadow-(--shadow-3)",
+          layout.panel,
           className,
         )}
         {...props}
@@ -49,7 +59,10 @@ export function SheetContent({
         {children}
         <SheetPrimitive.Close
           aria-label="Close"
-          className="absolute top-2 right-2 inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground md:size-9"
+          className={cn(
+            "absolute top-2 right-2 inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground pointer-fine:md:size-9",
+            layout.close,
+          )}
         >
           <XIcon className="size-4" aria-hidden="true" />
         </SheetPrimitive.Close>

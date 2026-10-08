@@ -33,7 +33,8 @@ Never "Task 1", "Example project" or filler text.
 
 ## Banned phrases
 
-Matched case-insensitively as substrings, so "seamless" also catches "seamlessly".
+Case-insensitive. Words match whole words only ("elevate" does not flag "elevation"), so list each
+form you want banned ("seamless" and "seamlessly"). Emoji match anywhere.
 
 ```banned
 unlock

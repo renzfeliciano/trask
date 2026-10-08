@@ -37,9 +37,11 @@ const TEXT_PAIRS = [
   ["muted-foreground", "background"],
   ["muted-foreground", "surface"],
   ["primary-foreground", "primary"],
+  ["primary-foreground", "primary-hover"],
   ["primary-text", "background"],
   ["primary-text", "surface"],
   ["danger-foreground", "danger"],
+  ["danger-foreground", "danger-hover"],
   // Text on yellow and on the secondary violet is always dark, in both themes (spec: "dark text 10.4:1").
   ["highlight-foreground", "highlight"],
   ["secondary-foreground", "secondary"],
