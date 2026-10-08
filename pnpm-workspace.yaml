@@ -3,9 +3,3 @@ minimumReleaseAge: 4320
 allowBuilds:
   sharp: false
   unrs-resolver: false
-# Temporary: Next 16.4.0 (the version pinned by spec section 8) was published 2026-10-06 and is
-# younger than minimumReleaseAge. Remove these entries once it is older than 3 days (2026-10-09).
-minimumReleaseAgeExclude:
-  - next@16.4.0
-  - eslint-config-next@16.4.0
-  - "@next/*"
