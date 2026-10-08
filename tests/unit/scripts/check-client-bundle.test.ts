@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { collectSecretValues, findLeaks } from "../../../scripts/check-client-bundle";
+/* eslint-disable security/detect-non-literal-fs-filename -- paths are temp dirs created by this test */
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { collectSecretValues, findLeaks, runCheck } from "../../../scripts/check-client-bundle";
 
 const secret = "s3cr3t-Value/with+chars=1234";
 const clean = { path: ".next/static/chunks/app.js", content: 'console.log("hello", 42);' };
@@ -97,15 +101,117 @@ describe("collectSecretValues", () => {
       APP_URL: "http://localhost:3000",
       Path: "/usr/local/bin:/usr/bin",
       GITHUB_SERVER_URL: "https://github.com",
-      npm_config_user_agent: "pnpm/12 npm/? node/v24 linux x64",
       REAL_SECRET: "keep-me-please",
     });
     expect(values).toEqual(["keep-me-please"]);
+  });
+
+  it.each([
+    "GITHUB_TOKEN",
+    "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
+    "NEXT_AUTH_SALT",
+    "NPM_TOKEN",
+    "npm_config__authtoken",
+    "PNPM_HOME_PASSWORD",
+    "GITHUB_SERVER_URL_SECRET",
+    "DB_PASS",
+    "AWS_CREDENTIALS_FILE",
+  ])("always scans credential-looking key %s", (key) => {
+    expect(collectSecretValues({ [key]: "ghp_abcdefgh12345678" })).toEqual([
+      "ghp_abcdefgh12345678",
+    ]);
+  });
+
+  it("does not exempt ambient tool prefixes any more", () => {
+    expect(
+      collectSecretValues({
+        NEXT_RUNTIME_MODE: "nodejs-long",
+        npm_lifecycle_event: "check-bundle",
+      }),
+    ).toHaveLength(2);
+  });
+
+  it("treats NEXT_PUBLIC_* as public even when the name looks like a credential", () => {
+    expect(collectSecretValues({ NEXT_PUBLIC_MAPS_KEY: "pk_live_publishable" })).toEqual([]);
   });
 
   it("de-duplicates repeated values", () => {
     expect(collectSecretValues({ A_KEY: "same-value-1", B_KEY: "same-value-1" })).toEqual([
       "same-value-1",
     ]);
+  });
+});
+
+describe("runCheck", () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function project(files: Record<string, string>): Promise<string> {
+    const cwd = await mkdtemp(join(tmpdir(), "bundle-scan-"));
+    dirs.push(cwd);
+    await mkdir(join(cwd, ".next", "static", "chunks"), { recursive: true });
+    for (const [name, content] of Object.entries(files)) {
+      await writeFile(join(cwd, ".next", "static", "chunks", name), content);
+    }
+    return cwd;
+  }
+  const capture = () => {
+    const lines: string[] = [];
+    const sink = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    return { lines, log: { info: sink, error: sink } };
+  };
+  const env = {
+    APP_DB_SECRET: "super-secret-value-123",
+    ENCRYPTION_KEY: "base64-key-for-the-test-1234",
+  };
+
+  it("exits 0 on a clean bundle", async () => {
+    const cwd = await project({ "ok.js": "console.log(1)" });
+    const { lines, log } = capture();
+    expect(await runCheck({ cwd, env, log })).toBe(0);
+    expect(lines.join("\n")).toContain("Client bundle clean");
+  });
+
+  it("exits 1 and prints path and reason, never the secret, on a leak", async () => {
+    const cwd = await project({ "ok.js": "1", "leak.js": `x="${env.APP_DB_SECRET}"` });
+    const { lines, log } = capture();
+    expect(await runCheck({ cwd, env, log })).toBe(1);
+    const output = lines.join("\n");
+    expect(output).toContain(
+      "LEAK .next/static/chunks/leak.js: contains the value of a server-only environment variable",
+    );
+    expect(output).not.toContain(env.APP_DB_SECRET);
+  });
+
+  it("exits 2 when there is no build to scan", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bundle-scan-"));
+    dirs.push(cwd);
+    const { lines, log } = capture();
+    expect(await runCheck({ cwd, env, log })).toBe(2);
+    expect(lines.join("\n")).toContain("pnpm build");
+  });
+
+  it("warns without failing locally when no named server variable is set", async () => {
+    const cwd = await project({ "ok.js": "1" });
+    const { lines, log } = capture();
+    expect(await runCheck({ cwd, env: {}, log })).toBe(0);
+    expect(lines.join("\n")).toContain("Warning: none of DATABASE_URL");
+  });
+
+  it("fails in CI when none of the named server variables is set, even if other values exist", async () => {
+    const cwd = await project({ "ok.js": "1" });
+    const { log } = capture();
+    expect(
+      await runCheck({ cwd, env: { CI: "true", npm_config_user_agent: "pnpm/12 node/v24" }, log }),
+    ).toBe(1);
+  });
+
+  it("fails in CI when no secret values were collected", async () => {
+    const cwd = await project({ "ok.js": "1" });
+    const { lines, log } = capture();
+    expect(await runCheck({ cwd, env: { CI: "true" }, log })).toBe(1);
+    expect(lines.join("\n")).toContain("Warning: none of DATABASE_URL");
   });
 });

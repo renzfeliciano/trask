@@ -1,4 +1,5 @@
 // Fails when the browser bundle (.next/static/**) contains a server secret value or the name of a server secret.
+// Library module (pure findLeaks/collectSecretValues plus runCheck); the executable entry is check-client-bundle.cli.ts.
 // Usage (after `pnpm build`): pnpm check:bundle   (exit code 1 on any leak, 2 when there is nothing to scan)
 //
 // Secret values come from process.env only: every variable that is not NEXT_PUBLIC_*, is not on the non-secret list
@@ -6,7 +7,7 @@
 // export them (or source your .env) in the same shell. Values are never printed, only the file path and the reason.
 import fg from "fast-glob";
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 
 export interface BundleFile {
   path: string;
@@ -22,9 +23,9 @@ const MIN_SECRET_LENGTH = 8;
 // Names that must never appear in client code, whatever the environment holds.
 const SECRET_NAMES = ["DATABASE_URL", "MIGRATION_DATABASE_URL", "ENCRYPTION_KEY"] as const;
 
-// Exact names (lowercase) whose values are public or ambient: the build inlines NODE_ENV ("production") and APP_URL is
-// the public origin, LOG_LEVEL is a word; the rest are OS/shell/CI variables that are not application secrets but whose
-// values (paths, "https://github.com", "C.UTF-8") legitimately occur in bundled code.
+// Exact names (lowercase) whose values are public or ambient: the build inlines NODE_ENV ("production"), APP_URL is
+// the public origin and LOG_LEVEL is a plain word; the rest are OS/shell/CI variables that are not application secrets
+// but whose values (paths, "https://github.com") can legitimately occur in bundled code.
 const NON_SECRET_KEYS = new Set([
   "node_env",
   "log_level",
@@ -58,9 +59,16 @@ const NON_SECRET_KEYS = new Set([
   "nvm_dir",
   "editor",
   "colorterm",
+  "github_server_url",
+  "github_api_url",
+  "github_graphql_url",
+  "github_repository",
+  "github_workspace",
 ]);
-// Ambient families injected by tooling: GitHub Actions, runners, npm/pnpm lifecycle, Next.js flags (NEXT_PUBLIC_* included).
-const NON_SECRET_PREFIXES = ["next_", "github_", "runner_", "npm_", "pnpm_", "lc_", "xdg_"];
+// Browser-exposed by definition (Next inlines them), so never a server secret. Nothing else is exempt by prefix.
+const PUBLIC_PREFIX = "next_public_";
+// Deny-override: a key that looks like a credential is always scanned, even if an exemption above would match it.
+const CREDENTIAL_KEY = /TOKEN|SECRET|KEY|PASSWORD|PASS|CREDENTIAL|AUTH/i;
 
 const BINARY_EXTENSIONS = /\.(?:woff2?|ttf|otf|eot|png|jpe?g|gif|webp|avif|ico|wasm)$/i;
 
@@ -83,11 +91,8 @@ export function collectSecretValues(env: Record<string, string | undefined>): st
   for (const [key, value] of Object.entries(env)) {
     const lower = key.toLowerCase();
     if (value === undefined || value.length < MIN_SECRET_LENGTH) continue;
-    if (
-      NON_SECRET_KEYS.has(lower) ||
-      NON_SECRET_PREFIXES.some((prefix) => lower.startsWith(prefix))
-    )
-      continue;
+    if (lower.startsWith(PUBLIC_PREFIX)) continue;
+    if (NON_SECRET_KEYS.has(lower) && !CREDENTIAL_KEY.test(key)) continue;
     values.add(value);
   }
   return [...values];
@@ -116,33 +121,48 @@ export function findLeaks(files: BundleFile[], secretValues: string[]): Leak[] {
   return leaks;
 }
 
-async function main(): Promise<number> {
-  const paths = await fg(".next/static/**/*", { dot: true, onlyFiles: true, unique: true });
+export interface CheckOptions {
+  /** Directory that contains `.next/` (the repo root). */
+  cwd: string;
+  env: Record<string, string | undefined>;
+  log?: Pick<Console, "info" | "error">;
+}
+
+/** Exit codes: 0 clean, 1 leak (or no secrets to check for in CI), 2 nothing to scan. */
+export async function runCheck({ cwd, env, log = console }: CheckOptions): Promise<number> {
+  const paths = await fg(".next/static/**/*", { cwd, dot: true, onlyFiles: true, unique: true });
   const scannable = paths.map(toPosix).filter((path) => !BINARY_EXTENSIONS.test(path));
   if (scannable.length === 0) {
-    console.error("No files under .next/static to scan. Run `pnpm build` first.");
+    log.error("No files under .next/static to scan. Run `pnpm build` first.");
     return 2;
   }
   const files = await Promise.all(
     // Paths come from the glob over .next/static, not from user input.
     // eslint-disable-next-line security/detect-non-literal-fs-filename
-    scannable.map(async (path) => ({ path, content: await readFile(path, "utf8") })),
+    scannable.map(async (path) => ({ path, content: await readFile(join(cwd, path), "utf8") })),
   );
-  const secretValues = collectSecretValues(process.env);
+  const secretValues = collectSecretValues(env);
   const leaks = findLeaks(files, secretValues);
-  for (const leak of leaks) console.error(`LEAK ${leak.path}: ${leak.reason}`);
+  for (const leak of leaks) log.error(`LEAK ${leak.path}: ${leak.reason}`);
   if (leaks.length > 0) {
-    console.error(
+    log.error(
       `Client bundle check failed: ${String(leaks.length)} leak(s) in ${String(files.length)} files.`,
     );
     return 1;
   }
-  console.info(
+  // Count only the named server variables, not secretValues.length: pnpm/npm inject lifecycle variables into every
+  // script run, so "zero collected values" is never true under `pnpm check:bundle`.
+  // eslint-disable-next-line security/detect-object-injection -- name comes from the constant SECRET_NAMES tuple
+  const namedValues = SECRET_NAMES.filter((name) => (env[name] ?? "").length >= MIN_SECRET_LENGTH);
+  if (namedValues.length === 0) {
+    log.error(
+      `Warning: none of ${SECRET_NAMES.join(", ")} is set in the environment, so only variable names were checked. Export the .env.test values first.`,
+    );
+    const ci = env["CI"];
+    if (ci !== undefined && ci !== "" && ci !== "false" && ci !== "0") return 1;
+  }
+  log.info(
     `Client bundle clean: ${String(files.length)} files scanned against ${String(secretValues.length)} secret values and ${String(SECRET_NAMES.length)} names.`,
   );
   return 0;
-}
-
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = await main();
 }
