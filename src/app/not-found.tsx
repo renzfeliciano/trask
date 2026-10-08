@@ -7,6 +7,7 @@ export default function NotFound() {
     <main className="flex min-h-dvh items-center justify-center">
       <EmptyState
         titleAs="h1"
+        mascot="error"
         title="Well… that wasn't supposed to happen."
         description="We couldn't find that page."
         action={

@@ -12,7 +12,12 @@ export default function RouteError({
 }) {
   return (
     <main className="flex min-h-dvh items-center justify-center">
-      <ErrorState titleAs="h1" description="Something went wrong on our side." onRetry={retry} />
+      <ErrorState
+        titleAs="h1"
+        mascot="error"
+        description="Something went wrong on our side."
+        onRetry={retry}
+      />
     </main>
   );
 }

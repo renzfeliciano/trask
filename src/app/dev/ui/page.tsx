@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
+import { LogoMark } from "@/components/brand/logo-mark";
+import { Mascot } from "@/components/brand/mascot";
+import { MASCOT_STATES } from "@/components/brand/mascot-manifest";
+import { Wordmark } from "@/components/brand/wordmark";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +91,18 @@ export default function UiReferencePage() {
         </p>
       </Section>
 
+      <Section title="Brand">
+        <div className="flex flex-wrap items-center gap-6">
+          <LogoMark tone="brand" className="size-16" />
+          <LogoMark className="size-16 text-primary" />
+          <LogoMark className="size-16 text-foreground" />
+          <span className="flex items-center gap-2.5">
+            <LogoMark tone="brand" className="size-7" />
+            <Wordmark className="text-base" />
+          </span>
+        </div>
+      </Section>
+
       <Section title="Primitives">
         <InteractivePrimitives />
         <div className="mt-6 grid gap-3 md:max-w-sm">
@@ -105,15 +121,31 @@ export default function UiReferencePage() {
         <div className="grid gap-4 md:grid-cols-2">
           <EmptyState
             className="rounded-lg border border-border bg-surface"
+            mascot="empty"
             title="Nothing here yet."
             description="Add a task to get this board moving."
           />
           <EmptyState
             className="rounded-lg border border-border bg-surface"
+            mascot="no-results"
             title="Nothing found."
             description="Try a different search."
           />
         </div>
+      </Section>
+
+      <Section title="Mascot states">
+        <ul className="grid grid-cols-2 gap-6 md:grid-cols-4">
+          {MASCOT_STATES.map((state) => (
+            <li key={state} className="flex flex-col items-center gap-2">
+              <Mascot state={state} size="md" />
+              <span className="flex items-center gap-2">
+                <Mascot state={state} size="sm" />
+                <code className="font-mono text-xs text-muted-foreground">{state}</code>
+              </span>
+            </li>
+          ))}
+        </ul>
       </Section>
     </div>
   );

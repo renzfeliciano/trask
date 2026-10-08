@@ -32,10 +32,10 @@ const PUBLIC_EXACT = new Set([
 
 const PUBLIC_PREFIXES = ["/legal/", "/api/auth/", "/_next/static/", "/brand/"];
 
-// File-convention icons: /icon.png, /icon1.png, /apple-icon.png, and /icon/<id> for generated sets.
+// File-convention icons: /icon.svg, /icon1.png, /apple-icon, and /icon1/<id> for generated sets.
 const ICON_FILE = /^\/(?:icon|apple-icon)\d{0,3}$/;
 const ICON_EXTENSION = /^[a-z0-9]{1,5}$/;
-const ICON_SET_MEMBER = /^\/(?:icon|apple-icon)\/[\w-]+$/;
+const ICON_SET_MEMBER = /^\/(?:icon|apple-icon)\d{0,3}\/[\w-]+$/;
 
 function isIconPath(path: string): boolean {
   if (ICON_SET_MEMBER.test(path)) return true;
