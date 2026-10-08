@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { safeRedirectPath } from "@/lib/safe-redirect";
-import { hasSessionCookie, isBlockedPath, isPublicPath } from "@/server/http/public-paths";
+import {
+  hasSessionCookie,
+  isBlockedPath,
+  isDevOnlyPath,
+  isPublicPath,
+} from "@/server/http/public-paths";
 import { buildCsp, generateNonce, securityHeaders } from "@/server/http/security-headers";
 
 // Next 16's proxy (the former middleware): default-deny gate plus per-request CSP nonce.
@@ -18,7 +23,10 @@ export function proxy(request: NextRequest): NextResponse {
   const csp = buildCsp(nonce, { dev: process.env.NODE_ENV === "development" });
   const { pathname, search } = request.nextUrl;
 
-  if (isBlockedPath(pathname)) {
+  if (
+    isBlockedPath(pathname) ||
+    (process.env.NODE_ENV === "production" && isDevOnlyPath(pathname))
+  ) {
     return withSecurityHeaders(new NextResponse(null, { status: 404 }), csp);
   }
 

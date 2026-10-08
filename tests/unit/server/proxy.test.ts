@@ -6,6 +6,10 @@ const request = (path: string, init?: { cookie?: string }) =>
     headers: init?.cookie ? { cookie: init.cookie } : {},
   });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("proxy", () => {
   it("lets a public page through with a nonce CSP and the security headers", () => {
     const response = proxy(request("/sign-in"));
@@ -75,5 +79,21 @@ describe("proxy", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("answers 404 for /dev/ui in production, signed in or not", () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    for (const cookie of [undefined, "better-auth.session_token=x"]) {
+      const response = proxy(request("/dev/ui", cookie ? { cookie } : undefined));
+      expect(response.status).toBe(404);
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("content-security-policy")).toBeTruthy();
+    }
+  });
+
+  it("still serves /dev/ui outside production", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(proxy(request("/dev/ui")).status).toBe(200);
   });
 });

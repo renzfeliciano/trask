@@ -1,6 +1,7 @@
 import {
   hasSessionCookie,
   isBlockedPath,
+  isDevOnlyPath,
   isPublicPath,
   SESSION_COOKIE_NAMES,
 } from "@/server/http/public-paths";
@@ -77,6 +78,13 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/dev/ui")).toBe(true);
     vi.stubEnv("NODE_ENV", "production");
     expect(isPublicPath("/dev/ui")).toBe(false);
+  });
+
+  it("recognizes dev-only paths, with or without a trailing slash", () => {
+    for (const path of ["/dev/ui", "/dev/ui/", "/dev/ui/extra"])
+      expect(isDevOnlyPath(path)).toBe(true);
+    for (const path of ["/", "/dev", "/dev/uix", "/w/dev/ui"])
+      expect(isDevOnlyPath(path)).toBe(false);
   });
 
   // Dev tooling (HMR socket, dev overlay, source lookups) must work before anyone signs in.

@@ -71,6 +71,16 @@ export function isPublicPath(pathname: string): boolean {
   return process.env.NODE_ENV !== "production" && path === DEV_UI_PATH;
 }
 
+/**
+ * Development-only pages (the `/dev/ui` showcase). In production they do not exist: the proxy answers
+ * 404 before the session check, so a signed-out visitor is not redirected to sign-in as if the page were
+ * real. The page also calls `notFound()` itself, as a second layer.
+ */
+export function isDevOnlyPath(pathname: string): boolean {
+  const path = withoutTrailingSlash(pathname);
+  return path === DEV_UI_PATH || path.startsWith(`${DEV_UI_PATH}/`);
+}
+
 const BLOCKED_EXTENSIONS = [".map", ".zip", ".tar", ".gz", ".bak", ".sql", ".env"];
 const WELL_KNOWN = ".well-known";
 
