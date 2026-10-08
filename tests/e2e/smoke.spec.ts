@@ -3,6 +3,21 @@ import { expect, test, type Page } from "@playwright/test";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
+// next-themes sets the theme class before hydration, so the class alone does not say the toggle is wired up.
+// React attaches its props to a DOM node when it hydrates it; clicking earlier would be silently lost.
+async function hydratedToggle(page: Page) {
+  const toggle = page.getByRole("button", { name: "Switch theme" });
+  await expect(toggle).toBeVisible();
+  await expect
+    .poll(() =>
+      toggle.evaluate((element) =>
+        Object.keys(element).some((key) => key.startsWith("__reactProps")),
+      ),
+    )
+    .toBe(true);
+  return toggle;
+}
+
 async function landing(page: Page, colorScheme: "light" | "dark") {
   // next-themes follows the system scheme by default, so emulating it picks the theme.
   await page.emulateMedia({ colorScheme });
@@ -36,7 +51,7 @@ test.describe("landing page", () => {
   test("toggles the dark class on <html>", async ({ page }) => {
     await landing(page, "light");
     const html = page.locator("html");
-    const toggle = page.getByRole("button", { name: "Switch theme" });
+    const toggle = await hydratedToggle(page);
 
     await toggle.click();
     await expect(html).toHaveClass(/\bdark\b/);
@@ -55,7 +70,7 @@ test.describe("landing page", () => {
     page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
 
     await page.goto("/");
-    await page.getByRole("button", { name: "Switch theme" }).click();
+    await (await hydratedToggle(page)).click();
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);
     await page.goto("/");
     await page.reload();

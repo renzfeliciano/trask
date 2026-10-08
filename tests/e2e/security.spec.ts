@@ -9,8 +9,17 @@ function header(response: APIResponse, name: string): string | undefined {
 
 test.describe("security headers", () => {
   test("every response carries the pinned headers and a nonce CSP", async ({ request }) => {
-    for (const path of ["/", "/api/health", "/definitely-missing", "/w/acme"]) {
+    // One of each response kind the proxy produces: page, route handler, its own 404s, and its sign-in redirect.
+    const responses: [path: string, status: number][] = [
+      ["/", 200],
+      ["/api/health", 200],
+      ["/.env", 404],
+      ["/dev/ui", 404],
+      ["/w/acme", 303],
+    ];
+    for (const [path, status] of responses) {
       const response = await request.get(path, noRedirects);
+      expect(response.status(), path).toBe(status);
 
       expect(header(response, "strict-transport-security"), path).toBe(
         "max-age=63072000; includeSubDomains",
@@ -55,10 +64,12 @@ test.describe("default-deny proxy", () => {
     });
   }
 
-  test("/dev/ui does not exist in a production build", async ({ request }) => {
-    const response = await request.get("/dev/ui", noRedirects);
-    expect(response.status()).toBe(404);
-  });
+  for (const path of ["/dev/ui", "/dev/%75i"]) {
+    test(`${path} does not exist in a production build`, async ({ request }) => {
+      const response = await request.get(path, noRedirects);
+      expect(response.status()).toBe(404);
+    });
+  }
 
   test("a workspace path without a session redirects to sign-in with the path preserved", async ({
     request,
@@ -80,33 +91,51 @@ test.describe("default-deny proxy", () => {
     baseURL,
   }) => {
     const origin = new URL(baseURL ?? "").origin;
-    const attempts = [
-      "/sign-in?next=//evil.com",
-      "/sign-in?next=%2F%2Fevil.com",
-      "/sign-in?next=/%5Cevil.com",
-      "/sign-in?next=https://evil.com",
-      "//evil.com",
-      "/%2F%2Fevil.com",
-      "/w//evil.com",
-      "/w/..//evil.com",
-      "/w/acme?next=//evil.com",
+    // Each row pins the status and, for redirects, where it goes. Sign-in is public, so a hostile `next`
+    // there is just a request to a page: it must not redirect at all. Next itself collapses doubled slashes
+    // with a same-site 308 before the proxy runs; the proxy sanitizes what it puts in `next`.
+    type Expected =
+      | { status: number; location?: undefined }
+      | { status: number; location: string; next?: string };
+    const attempts: [path: string, expected: Expected][] = [
+      ["/sign-in?next=//evil.com", { status: 404 }],
+      ["/sign-in?next=%2F%2Fevil.com", { status: 404 }],
+      ["/sign-in?next=/%5Cevil.com", { status: 404 }],
+      ["/sign-in?next=https://evil.com", { status: 404 }],
+      ["//evil.com", { status: 308, location: "/evil.com" }],
+      ["/w//evil.com", { status: 308, location: "/w/evil.com" }],
+      ["/w/..//evil.com", { status: 308, location: "/evil.com" }],
+      ["/%2F%2Fevil.com", { status: 303, location: "/sign-in", next: "/" }],
+      [
+        "/w/acme?next=//evil.com",
+        { status: 303, location: "/sign-in", next: "/w/acme?next=%2F%2Fevil.com" },
+      ],
     ];
 
-    for (const attempt of attempts) {
+    let redirects = 0;
+    for (const [attempt, expected] of attempts) {
       const response = await request.get(`${origin}${attempt}`, noRedirects);
-      const location = header(response, "location");
-      if (location === undefined) continue;
+      expect(response.status(), attempt).toBe(expected.status);
 
-      const target = new URL(location, origin);
+      const location = header(response, "location");
+      if (expected.location === undefined) {
+        expect(location, attempt).toBeUndefined();
+        continue;
+      }
+
+      redirects += 1;
+      const target = new URL(location ?? "", origin);
       expect(target.origin, attempt).toBe(origin);
-      expect(target.pathname.startsWith("//"), attempt).toBe(false);
-      const next = target.searchParams.get("next");
-      if (next !== null) {
-        expect(next.startsWith("/") && !next.startsWith("//"), `${attempt} -> next=${next}`).toBe(
-          true,
-        );
+      expect(target.pathname, attempt).toBe(expected.location);
+      if ("next" in expected) {
+        const next = target.searchParams.get("next") ?? "";
+        expect(next, attempt).toBe(expected.next);
+        expect(/^\/(?![/\\])/.test(next), `${attempt} -> next=${next}`).toBe(true);
       }
     }
+    // Guards against the loop passing without ever seeing a redirect.
+    expect(redirects).toBe(attempts.filter(([, { location }]) => location !== undefined).length);
+    expect(redirects).toBeGreaterThan(0);
   });
 });
 

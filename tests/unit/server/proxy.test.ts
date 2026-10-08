@@ -84,11 +84,13 @@ describe("proxy", () => {
   it("answers 404 for /dev/ui in production, signed in or not", () => {
     vi.stubEnv("NODE_ENV", "production");
 
-    for (const cookie of [undefined, "better-auth.session_token=x"]) {
-      const response = proxy(request("/dev/ui", cookie ? { cookie } : undefined));
-      expect(response.status).toBe(404);
-      expect(response.headers.get("location")).toBeNull();
-      expect(response.headers.get("content-security-policy")).toBeTruthy();
+    for (const path of ["/dev/ui", "/dev/%75i"]) {
+      for (const cookie of [undefined, "better-auth.session_token=x"]) {
+        const response = proxy(request(path, cookie ? { cookie } : undefined));
+        expect(response.status, path).toBe(404);
+        expect(response.headers.get("location"), path).toBeNull();
+        expect(response.headers.get("content-security-policy"), path).toBeTruthy();
+      }
     }
   });
 

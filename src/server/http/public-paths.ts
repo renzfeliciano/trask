@@ -77,7 +77,15 @@ export function isPublicPath(pathname: string): boolean {
  * real. The page also calls `notFound()` itself, as a second layer.
  */
 export function isDevOnlyPath(pathname: string): boolean {
-  const path = withoutTrailingSlash(pathname);
+  // Decoded like isBlockedPath: Next routes `/dev/%75i` to `/dev/ui`. An undecodable path is not ours
+  // to judge here; isBlockedPath already rejects it.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return false;
+  }
+  const path = withoutTrailingSlash(decoded);
   return path === DEV_UI_PATH || path.startsWith(`${DEV_UI_PATH}/`);
 }
 

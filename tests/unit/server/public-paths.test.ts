@@ -81,9 +81,16 @@ describe("isPublicPath", () => {
   });
 
   it("recognizes dev-only paths, with or without a trailing slash", () => {
-    for (const path of ["/dev/ui", "/dev/ui/", "/dev/ui/extra"])
+    for (const path of [
+      "/dev/ui",
+      "/dev/ui/",
+      "/dev/ui/extra",
+      "/dev/%75i",
+      "/%64ev/ui",
+      "/dev%2Fui",
+    ])
       expect(isDevOnlyPath(path)).toBe(true);
-    for (const path of ["/", "/dev", "/dev/uix", "/w/dev/ui"])
+    for (const path of ["/", "/dev", "/dev/uix", "/w/dev/ui", "/dev/%zz"])
       expect(isDevOnlyPath(path)).toBe(false);
   });
 
