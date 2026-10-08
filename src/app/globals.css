@@ -1,1 +1,227 @@
 @import "tailwindcss";
+
+/* Class-based dark mode: next-themes puts `dark` on <html>, so a manual choice overrides the system. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * TRASK tokens (spec §5 "Tokens", from the brand board). Every text/background pair is checked by
+ * tests/unit/design/contrast.test.ts, so a change here that breaks WCAG AA fails CI.
+ * Rules the test cannot see: --secondary is a fill (never text on white); --border is decorative;
+ * --muted-foreground is for text 13 px and up and never sits on --muted.
+ */
+:root {
+  --background: #f8f7ff;
+  --surface: #ffffff;
+  --foreground: #1e1b4b;
+  --muted: #f1effb;
+  --muted-foreground: #6b7280;
+  --border: #e4e1f5;
+  /* Form-control outlines need 3:1 against their surface (WCAG 1.4.11), which --border is not. */
+  --input: #8e89b5;
+  --ring: #7c3aed;
+
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --primary-text: #7c3aed;
+  --secondary: #a78bfa;
+  --secondary-foreground: #1e1b4b;
+  --accent: #c4b5fd;
+  --highlight: #facc15;
+  --highlight-foreground: #1e1b4b;
+
+  --success: #16a34a;
+  --warning: #ea580c;
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+  --info: #2563eb;
+
+  /* Label chips always use dark text, in both themes. */
+  --label-foreground: #1e1b4b;
+  --label-1: #f472b6;
+  --label-2: #f87171;
+  --label-3: #4ade80;
+  --label-4: #facc15;
+  --label-5: #60a5fa;
+  --label-6: #fbcfe8;
+  --label-7: #fecaca;
+  --label-8: #bbf7d0;
+  --label-9: #fef08a;
+  --label-10: #bfdbfe;
+
+  /* Reserved for the logo mark and the landing hero. Never on buttons, cards, headers or product UI. */
+  --brand-gradient: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+
+  /* Elevation only: menus and toasts (1–2), sheets, dialogs and a dragged card (3). Resting surfaces use borders. */
+  --shadow-1: 0 1px 2px rgb(30 27 75 / 0.06);
+  --shadow-2: 0 2px 4px rgb(30 27 75 / 0.06), 0 8px 16px rgb(30 27 75 / 0.08);
+  --shadow-3: 0 4px 8px rgb(30 27 75 / 0.08), 0 16px 40px rgb(30 27 75 / 0.14);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+}
+
+.dark {
+  --background: #0f0d1f;
+  --surface: #1a1730;
+  --foreground: #ede9fe;
+  --muted: #221e3a;
+  --muted-foreground: #9ca3af;
+  --border: #2e2a4a;
+  --input: #6a6592;
+  --ring: #a78bfa;
+
+  --primary-text: #a78bfa;
+  --accent: #2e2650;
+
+  --success: #4ade80;
+  --warning: #fb923c;
+  --danger: #f87171;
+  --danger-foreground: #0f0d1f;
+  --info: #60a5fa;
+
+  --label-6: #f9a8d4;
+  --label-7: #fca5a5;
+  --label-8: #86efac;
+  --label-9: #fde047;
+  --label-10: #93c5fd;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 16px rgb(0 0 0 / 0.35);
+  --shadow-3: 0 4px 8px rgb(0 0 0 / 0.35), 0 16px 40px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
+
+/* Exactly three radii (plus rounded-full for avatars and pills); the default scale is removed on purpose. */
+@theme static {
+  --radius-*: initial;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-label-foreground: var(--label-foreground);
+  --color-label-1: var(--label-1);
+  --color-label-2: var(--label-2);
+  --color-label-3: var(--label-3);
+  --color-label-4: var(--label-4);
+  --color-label-5: var(--label-5);
+  --color-label-6: var(--label-6);
+  --color-label-7: var(--label-7);
+  --color-label-8: var(--label-8);
+  --color-label-9: var(--label-9);
+  --color-label-10: var(--label-10);
+
+  /* Elevation comes only from the theme-aware tokens above, used as shadow-(--shadow-N). */
+  --shadow-*: initial;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --animate-fade-in: fade-in var(--duration-base) ease-out;
+  --animate-fade-out: fade-out var(--duration-fast) ease-in;
+  --animate-sheet-up: sheet-up var(--duration-base) ease-out;
+  --animate-sheet-down: sheet-down var(--duration-fast) ease-in;
+  --animate-drawer-in: drawer-in var(--duration-base) ease-out;
+  --animate-drawer-out: drawer-out var(--duration-fast) ease-in;
+}
+
+/* Motion explains change only (a sheet arriving or leaving); there are no entrance animations on page load. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sheet-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes drawer-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* One focus treatment everywhere: 2 px ring, 2 px offset (spec §5). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background-color: var(--accent);
+    color: var(--foreground);
+  }
+}
+
+/* Sonner injects an unlayered stylesheet at runtime, so these need a higher specificity than its rules. */
+[data-sonner-toaster][data-sonner-theme] {
+  font-family: var(--font-sans);
+}
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  box-shadow: var(--shadow-2);
+}
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-description] {
+  color: var(--muted-foreground);
+}

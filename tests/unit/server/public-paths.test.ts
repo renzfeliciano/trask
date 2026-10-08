@@ -70,6 +70,35 @@ describe("isPublicPath", () => {
     vi.stubEnv("NODE_ENV", "production");
     expect(isPublicPath("/dev/ui")).toBe(false);
   });
+
+  // Dev tooling (HMR socket, dev overlay, source lookups) must work before anyone signs in.
+  const DEV_TOOLING = [
+    "/_next/webpack-hmr",
+    "/_next/data/development/index.json",
+    "/_next/static",
+    "/__nextjs_original-stack-frames",
+    "/__nextjs_source-map",
+    "/__nextjs_launch-editor",
+  ];
+
+  it.each(DEV_TOOLING)("allows %s in development", (path) => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(isPublicPath(path)).toBe(true);
+  });
+
+  it.each(DEV_TOOLING)("denies %s outside development", (path) => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(isPublicPath(path)).toBe(false);
+    vi.stubEnv("NODE_ENV", "test");
+    expect(isPublicPath(path)).toBe(false);
+  });
+
+  it("does not open look-alike paths in development", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(isPublicPath("/_nextx/a")).toBe(false);
+    expect(isPublicPath("/w/acme/_next/a")).toBe(false);
+    expect(isPublicPath("/_next")).toBe(false);
+  });
 });
 
 describe("isBlockedPath", () => {

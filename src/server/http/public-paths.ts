@@ -46,6 +46,15 @@ function isIconPath(path: string): boolean {
 
 const DEV_UI_PATH = "/dev/ui";
 
+// `next dev` serves its HMR socket, dev overlay and source lookups under these; none exist in a production build.
+const DEV_TOOLING_PREFIXES = ["/_next/", "/__nextjs"];
+
+function isDevToolingPath(path: string): boolean {
+  return DEV_TOOLING_PREFIXES.some(
+    (prefix) => path.startsWith(prefix) && path.length > prefix.length,
+  );
+}
+
 function withoutTrailingSlash(pathname: string): string {
   return pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 }
@@ -58,6 +67,7 @@ export function isPublicPath(pathname: string): boolean {
     return true;
   }
   if (isIconPath(path)) return true;
+  if (process.env.NODE_ENV === "development" && isDevToolingPath(path)) return true;
   return process.env.NODE_ENV !== "production" && path === DEV_UI_PATH;
 }
 
