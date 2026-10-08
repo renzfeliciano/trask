@@ -37,6 +37,9 @@ const boundaryElements = [
     partialMatch: false,
   },
   { type: "app", pattern: "src/app", partialMatch: false },
+  // Catch-all for every other file under src/ (instrumentation.ts, server/index.ts, ...). It must stay last: an
+  // unclassified file is invisible to the plugin, which would let it import the db unchecked.
+  { type: "src-other", pattern: "src", partialMatch: false },
 ];
 
 // schemas/ and types/ are the only feature-client folders that actions may import.
@@ -56,6 +59,11 @@ const sameFeature = (type) => ({
 
 // Default is disallow and the last matching policy wins, so each policy below only lists what is permitted.
 const boundaryPolicies = [
+  // Imports inside one element (checkInternals is on, so the repository rule below can see same-module imports).
+  { allow: { to: { element: { path: "{{ from.element.path }}" } } } },
+  // src-other is a shared zone anyone may import from; it may reach lib, config and non-repository server code.
+  { allow: { to: el("src-other") } },
+  { from: el("src-other"), allow: { to: el("lib", "config", ...SERVER) } },
   { from: el("components-ui"), allow: { to: el("lib") } },
   { from: el("lib"), allow: { to: el("lib") } },
   { from: el("config"), allow: { to: el("lib") } },
@@ -89,7 +97,12 @@ const boundaryPolicies = [
   { from: el(...SERVER), allow: { to: el(...SERVER, "lib", "config") } },
   // Only server code may use repositories (matrix: the app and actions reach the "server" row, not repositories).
   {
-    from: [el("app"), { file: { categories: "app-entry" } }, el("feature-actions")],
+    from: [
+      el("app"),
+      { file: { categories: "app-entry" } },
+      el("feature-actions"),
+      el("src-other"),
+    ],
     disallow: { to: { file: { categories: "repository" } } },
   },
   // Narrows repositories (also "server" elements) to the matrix row: later policies win, so this runs after the one above.
@@ -126,7 +139,10 @@ const eslintConfig = defineConfig([
       "import/resolver": { "./eslint-alias-resolver.cjs": {} },
     },
     rules: {
-      "boundaries/dependencies": ["error", { default: "disallow", policies: boundaryPolicies }],
+      "boundaries/dependencies": [
+        "error",
+        { default: "disallow", checkInternals: true, policies: boundaryPolicies },
+      ],
     },
   },
   // --- Security and domain bans ---------------------------------------------------------------------------

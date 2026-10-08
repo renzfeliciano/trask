@@ -103,4 +103,36 @@ describe("lint guardrails", () => {
       ).toContain("boundaries/dependencies");
     }
   });
+
+  it("blocks the db from files outside any named layer", async () => {
+    const code = 'import { db } from "@/db/client";\nexport const x = db;\n';
+    for (const filePath of ["src/instrumentation.ts", "src/types/a.ts", "src/server/index.ts"]) {
+      const messages = await ruleIds(code, filePath);
+      expect(
+        messages.map((m) => m.ruleId),
+        filePath,
+      ).toContain("boundaries/dependencies");
+    }
+  });
+
+  it("keeps repositories off services in their own module, by alias and relative path", async () => {
+    for (const source of ["@/server/x/service", "./service"]) {
+      const messages = await ruleIds(
+        `import { y } from "${source}";\nexport const x = y;\n`,
+        "src/server/x/repository.ts",
+      );
+      expect(
+        messages.map((m) => m.ruleId),
+        source,
+      ).toContain("boundaries/dependencies");
+    }
+  });
+
+  it("lets services use the repository in their own module", async () => {
+    const messages = await ruleIds(
+      'import { repo } from "./repository";\nexport const x = repo;\n',
+      "src/server/x/service.ts",
+    );
+    expect(messages.map((m) => m.ruleId)).not.toContain("boundaries/dependencies");
+  });
 });
