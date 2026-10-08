@@ -1,0 +1,10 @@
+title = "TRASK gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# The one place a credential-shaped value is committed on purpose: throwaway passwords and a test-only
+# encryption key for the CI/Docker database. Nothing else is allowlisted.
+[[allowlists]]
+description = "Test-only credentials in .env.test"
+paths = ['''^\.env\.test$''']

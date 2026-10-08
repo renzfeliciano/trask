@@ -1,0 +1,66 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "timezone": "Asia/Singapore",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "3 days",
+  "rangeStrategy": "pin",
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "schedule": ["at any time"],
+    "labels": ["dependencies", "security"],
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "Patch and minor updates of dev dependencies merge on their own once CI is green",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "groupName": "eslint",
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/**",
+        "eslint-*",
+        "!eslint-config-next",
+        "typescript-eslint",
+        "@typescript-eslint/**"
+      ]
+    },
+    {
+      "groupName": "next",
+      "matchPackageNames": ["next", "eslint-config-next"]
+    },
+    {
+      "groupName": "prisma",
+      "matchPackageNames": ["prisma", "@prisma/**"]
+    },
+    {
+      "groupName": "react",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    },
+    {
+      "groupName": "dnd-kit",
+      "matchPackageNames": ["@dnd-kit/**"]
+    },
+    {
+      "groupName": "playwright and postgres image",
+      "matchPackageNames": ["@playwright/test", "postgres"]
+    },
+    {
+      "description": "Node moves to a new major only after it enters LTS, so these wait for a manual go-ahead",
+      "matchPackageNames": ["node", "@types/node"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Majors always need a human, whatever the dependency type",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ]
+}
