@@ -1,0 +1,12 @@
+{
+  // Used only by tsx when running scripts outside Next (prisma/seed.ts). Next resolves "server-only" at compile time;
+  // plain Node has no such package, so scripts map it to the same empty stub Vitest uses. Type checking still uses
+  // tsconfig.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "server-only": ["./tests/stubs/server-only.ts"]
+    }
+  }
+}

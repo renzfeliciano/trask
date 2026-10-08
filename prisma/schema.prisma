@@ -4,6 +4,8 @@
 //   * every tenant table carries workspaceId;
 //   * every parent a child points at exposes @@unique([id, workspaceId]), and the child's foreign key
 //     is (parentId, workspaceId) -> (id, workspaceId), so a link across workspaces is rejected by Postgres;
+//   * those composite foreign keys are ON UPDATE RESTRICT: a cascaded key update would carry a whole subtree into
+//     another workspace (referential actions bypass row-level security), so moving a parent is refused instead;
 //   * deleting a workspace cascades to everything it owns; deleting a user nulls author/assignee/actor
 //     references ("Deleted user") instead of deleting work.
 
@@ -138,7 +140,7 @@ model Column {
   updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  board     Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  board     Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
 
   tasks Task[]
 
@@ -169,16 +171,16 @@ model Task {
   createdAt    DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  board     Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board      Board     @relation(fields: [boardId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
   // The column FK includes boardId, so a task cannot sit in a column of a different board (even in the same workspace).
   // NoAction (not Cascade): deleting a column that still holds tasks is refused. Deleting a board or workspace
   // still works because the tasks are removed by the board/workspace cascade in the same statement.
-  column    Column    @relation(fields: [columnId, boardId, workspaceId], references: [id, boardId, workspaceId], onDelete: NoAction)
-  assignee  User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  createdBy User?     @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  column     Column    @relation(fields: [columnId, boardId, workspaceId], references: [id, boardId, workspaceId], onDelete: NoAction, onUpdate: Restrict)
+  assignee   User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy  User?     @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   // The migration narrows this to ON DELETE SET NULL ("parentTaskId") so workspaceId is never nulled.
-  parentTask Task?    @relation("TaskSubtasks", fields: [parentTaskId, workspaceId], references: [id, workspaceId], onDelete: SetNull)
+  parentTask Task?     @relation("TaskSubtasks", fields: [parentTaskId, workspaceId], references: [id, workspaceId], onDelete: SetNull, onUpdate: Restrict)
 
   subtasks       Task[]          @relation("TaskSubtasks")
   labels         TaskLabel[]
@@ -219,8 +221,8 @@ model TaskLabel {
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
-  label     Label     @relation(fields: [labelId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
+  label     Label     @relation(fields: [labelId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([taskId, labelId])
   @@index([labelId])
@@ -237,7 +239,7 @@ model ChecklistItem {
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
 
   @@unique([id, workspaceId])
   @@index([taskId, position])
@@ -255,7 +257,7 @@ model Comment {
   updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
   author    User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@unique([id, workspaceId])
@@ -276,7 +278,7 @@ model Attachment {
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId, workspaceId], references: [id, workspaceId], onDelete: Cascade, onUpdate: Restrict)
   uploader  User?     @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
 
   @@unique([id, workspaceId])

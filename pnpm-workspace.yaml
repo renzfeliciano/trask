@@ -1,6 +1,7 @@
 saveExact: true
 minimumReleaseAge: 4320
 allowBuilds:
+  esbuild: false
   sharp: false
   unrs-resolver: false
   "@prisma/engines": true

@@ -22,7 +22,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx --tsconfig tsconfig.scripts.json prisma/seed.ts",
     "knip": "knip",
     "check:bundle": "tsx scripts/check-bundle.ts"
   },
@@ -54,6 +54,7 @@
     "prettier": "3.9.9",
     "prisma": "7.10.0",
     "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.0",
     "vitest": "5.0.3"

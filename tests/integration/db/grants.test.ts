@@ -1,6 +1,17 @@
+import { withTenant } from "@/db/tenant";
 import { adminDb, appDb, createUser, resetDb } from "../helpers/db";
 
 const PERMISSION_DENIED = /permission denied/;
+
+/** A user who is a member of a fresh workspace; row-level security limits trask_app to such workspaces. */
+async function seedMember(slug: string) {
+  const user = await createUser();
+  const workspace = await adminDb.workspace.create({ data: { name: slug, slug } });
+  await adminDb.workspaceMember.create({
+    data: { workspaceId: workspace.id, userId: user.id, role: "MEMBER" },
+  });
+  return { ctx: { userId: user.id }, workspace };
+}
 
 describe("trask_app grants", () => {
   beforeEach(resetDb);
@@ -22,16 +33,21 @@ describe("trask_app grants", () => {
   });
 
   it("allows ordinary reads and writes on work tables", async () => {
-    const workspace = await appDb.workspace.create({ data: { name: "W", slug: "grants-w" } });
-    await appDb.workspace.update({ where: { id: workspace.id }, data: { name: "Renamed" } });
-    expect(await appDb.workspace.count()).toBe(1);
-    await appDb.workspace.delete({ where: { id: workspace.id } });
-    expect(await appDb.workspace.count()).toBe(0);
+    const { ctx, workspace } = await seedMember("grants-w");
+    const db = withTenant(ctx);
+    const board = await db.board.create({
+      data: { workspaceId: workspace.id, name: "Board", position: "a0" },
+    });
+    await db.board.update({ where: { id: board.id }, data: { name: "Renamed" } });
+    expect(await db.board.count()).toBe(1);
+    await db.board.delete({ where: { id: board.id } });
+    expect(await db.board.count()).toBe(0);
   });
 
   it("makes Activity append-only", async () => {
-    const workspace = await adminDb.workspace.create({ data: { name: "W", slug: "grants-a" } });
-    const activity = await appDb.activity.create({
+    const { ctx, workspace } = await seedMember("grants-a");
+    const db = withTenant(ctx);
+    const activity = await db.activity.create({
       data: {
         workspaceId: workspace.id,
         type: "task.created",
@@ -39,11 +55,11 @@ describe("trask_app grants", () => {
         entityId: workspace.id,
       },
     });
-    expect(await appDb.activity.count()).toBe(1);
+    expect(await db.activity.count()).toBe(1);
     await expect(
-      appDb.activity.update({ where: { id: activity.id }, data: { type: "task.deleted" } }),
+      db.activity.update({ where: { id: activity.id }, data: { type: "task.deleted" } }),
     ).rejects.toThrow(PERMISSION_DENIED);
-    await expect(appDb.activity.delete({ where: { id: activity.id } })).rejects.toThrow(
+    await expect(db.activity.delete({ where: { id: activity.id } })).rejects.toThrow(
       PERMISSION_DENIED,
     );
   });

@@ -206,4 +206,26 @@ describe("composite foreign keys", () => {
     expect(await adminDb.label.count({ where })).toBe(0);
     expect(await adminDb.task.count({ where: { workspaceId: w2.workspace.id } })).toBe(1);
   });
+
+  it("refuses to move a board that has columns into another workspace", async () => {
+    const w1 = await seedWorkspace("w1");
+    const w2 = await seedWorkspace("w2");
+    // A cascaded key update would carry the board's columns along into w2; RESTRICT refuses it instead.
+    await expect(
+      adminDb.board.update({
+        where: { id: w1.board.id },
+        data: { workspaceId: w2.workspace.id },
+      }),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+    const column = await adminDb.column.findUniqueOrThrow({ where: { id: w1.column.id } });
+    expect(column.workspaceId).toBe(w1.workspace.id);
+  });
+
+  it("restricts key updates on every composite foreign key", async () => {
+    const cascading = await adminDb.$queryRaw<{ name: string; onUpdate: string }[]>`
+      SELECT conname AS name, confupdtype::text AS "onUpdate" FROM pg_constraint
+      WHERE contype = 'f' AND connamespace = 'public'::regnamespace AND cardinality(conkey) > 1
+        AND confupdtype <> 'r'`;
+    expect(cascading).toEqual([]);
+  });
 });
