@@ -32,7 +32,8 @@ function extendForUser(userId: string) {
  *
  * Each operation runs in its own short transaction. `$transaction` is left out because an operation inside a caller's
  * transaction would not carry the tenant setting (it would see no rows); add a tenant-aware transaction helper when a
- * use case needs several statements to commit together.
+ * use case needs several statements to commit together. The omission is type-level only: the runtime object still has
+ * these methods, so a cast can reach them.
  */
 export type TenantDb = Omit<
   ReturnType<typeof extendForUser>,

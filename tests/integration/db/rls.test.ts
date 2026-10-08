@@ -1,4 +1,5 @@
 import { withTenant } from "@/db/tenant";
+import { inspectCurrentRole, rlsExemptions } from "../../../scripts/rls-exemption";
 import { adminDb, appDb, createUser, resetDb } from "../helpers/db";
 
 const PERMISSION_DENIED = /permission denied/;
@@ -131,14 +132,23 @@ describe("row-level security", () => {
   });
 
   it("app role cannot bypass RLS", async () => {
-    const [role] = await appDb.$queryRaw<
-      { currentUser: string; rolbypassrls: boolean; rolsuper: boolean }[]
-    >`SELECT current_user AS "currentUser", rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user`;
-    expect(role).toEqual({ currentUser: "trask_app", rolbypassrls: false, rolsuper: false });
+    // Ownership counts through role membership too (Postgres checks has_privs_of_role), so a
+    // `GRANT trask_migrator TO trask_app` would show up here as owner and memberOfMigrator.
+    const role = await inspectCurrentRole(appDb);
+    expect(role).toEqual({
+      name: "trask_app",
+      rolsuper: false,
+      rolbypassrls: false,
+      owner: false,
+      memberOfMigrator: false,
+    });
+    expect(rlsExemptions(role)).toEqual([]);
 
-    const [board] = await appDb.$queryRaw<{ tableowner: string }[]>`
-      SELECT tableowner FROM pg_tables WHERE schemaname = 'public' AND tablename = 'Board'`;
-    expect(board?.tableowner).not.toBe(role?.currentUser);
+    // The same check flags the owner role.
+    expect(rlsExemptions(await inspectCurrentRole(adminDb))).toEqual([
+      "trask_migrator has the privileges of a table or function owner",
+      "trask_migrator is a member of trask_migrator",
+    ]);
   });
 
   it("enables row-level security on every tenant table", async () => {
@@ -170,6 +180,19 @@ describe("row-level security", () => {
     for (const table of tables) {
       expect(table, table.table).toMatchObject({ rls: true, forced: false });
       expect(table.policies, table.table).toBeGreaterThan(0);
+    }
+
+    // Every policy filters on membership: USING always, WITH CHECK wherever rows can be written.
+    const policies = await adminDb.$queryRaw<
+      { table: string; name: string; cmd: string; qual: string | null; withCheck: string | null }[]
+    >`
+      SELECT tablename AS "table", policyname AS name, cmd, qual, with_check AS "withCheck"
+      FROM pg_policies WHERE schemaname = 'public'`;
+    for (const policy of policies) {
+      const label = `${policy.table}.${policy.name}`;
+      expect(policy.qual, label).toMatch(/^app\.is_member\(/);
+      if (policy.cmd === "ALL" || policy.cmd === "UPDATE")
+        expect(policy.withCheck, label).toMatch(/^app\.is_member\(/);
     }
   });
 
