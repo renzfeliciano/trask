@@ -61,6 +61,25 @@ describe("composite foreign keys", () => {
     ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
   });
 
+  it("rejects a task whose column belongs to another board of the same workspace", async () => {
+    const w1 = await seedWorkspace("w1");
+    const otherBoard = await adminDb.board.create({
+      data: { workspaceId: w1.workspace.id, name: "Other", position: "a1" },
+    });
+    const otherColumn = await adminDb.column.create({
+      data: {
+        workspaceId: w1.workspace.id,
+        boardId: otherBoard.id,
+        name: "To do",
+        position: "a0",
+        kind: "TODO",
+      },
+    });
+    await expect(
+      adminDb.task.create({ data: taskData(w1, 1, { columnId: otherColumn.id }) }),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+  });
+
   it("rejects a column placed on another workspace's board", async () => {
     const w1 = await seedWorkspace("w1");
     const w2 = await seedWorkspace("w2");

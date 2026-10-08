@@ -8,9 +8,14 @@ function createClient(): PrismaClient {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: getEnv().DATABASE_URL }) });
 }
 
-// Hot reloads re-evaluate this module in development; keep one client (and one connection pool) per process.
+// Hot reloads re-evaluate this module in development; keeping the client on globalThis preserves one connection pool per process.
 const globalForDb = globalThis as typeof globalThis & { traskDb?: PrismaClient };
 
-export const db = globalForDb.traskDb ?? createClient();
-
-if (process.env.NODE_ENV !== "production") globalForDb.traskDb = db;
+/**
+ * The application's Prisma client, created on first call and memoized. Reading the environment here (not at import)
+ * means importing a module that uses the db never requires configuration, which keeps unit tests and `next build` free of it.
+ */
+export function getDb(): PrismaClient {
+  globalForDb.traskDb ??= createClient();
+  return globalForDb.traskDb;
+}

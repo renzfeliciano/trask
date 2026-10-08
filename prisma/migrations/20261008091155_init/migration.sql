@@ -230,6 +230,9 @@ CREATE INDEX "Column_boardId_position_idx" ON "Column"("boardId", "position");
 CREATE UNIQUE INDEX "Column_id_workspaceId_key" ON "Column"("id", "workspaceId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Column_id_boardId_workspaceId_key" ON "Column"("id", "boardId", "workspaceId");
+
+-- CreateIndex
 CREATE INDEX "Task_columnId_position_idx" ON "Task"("columnId", "position");
 
 -- CreateIndex
@@ -314,7 +317,7 @@ ALTER TABLE "Task" ADD CONSTRAINT "Task_workspaceId_fkey" FOREIGN KEY ("workspac
 ALTER TABLE "Task" ADD CONSTRAINT "Task_boardId_workspaceId_fkey" FOREIGN KEY ("boardId", "workspaceId") REFERENCES "Board"("id", "workspaceId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Task" ADD CONSTRAINT "Task_columnId_workspaceId_fkey" FOREIGN KEY ("columnId", "workspaceId") REFERENCES "Column"("id", "workspaceId") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_columnId_boardId_workspaceId_fkey" FOREIGN KEY ("columnId", "boardId", "workspaceId") REFERENCES "Column"("id", "boardId", "workspaceId") ON DELETE NO ACTION ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Task" ADD CONSTRAINT "Task_assigneeId_fkey" FOREIGN KEY ("assigneeId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
