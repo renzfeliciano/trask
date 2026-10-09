@@ -181,6 +181,13 @@ const eslintConfig = defineConfig([
             "BinaryExpression[operator=/^[!=]==?$/] > MemberExpression[property.name='role']",
           message: "Compare roles with atLeast() from @/server/authz/roles.",
         },
+        {
+          // An inline Server Action (a "use server" directive inside a function body) is a callable endpoint that
+          // skips createAction's checks and the wrapped-actions test, which only sees file-level "use server" modules.
+          selector: ":function > BlockStatement > ExpressionStatement[directive='use server']",
+          message:
+            'Inline "use server" functions are banned: define the action with createAction in a file-level "use server" module.',
+        },
       ],
     },
   },

@@ -44,6 +44,27 @@ describe("lint guardrails", () => {
     expect(hit?.message).toContain("atLeast");
   });
 
+  it('bans inline "use server" functions and points to createAction', async () => {
+    const snippets = [
+      'export async function save() {\n  "use server";\n  return 1;\n}\n',
+      'export const save = async () => {\n  "use server";\n  return 1;\n};\n',
+      'export function Form() {\n  async function save() {\n    "use server";\n  }\n  return save;\n}\n',
+    ];
+    for (const code of snippets) {
+      const messages = await ruleIds(code, "src/app/page.tsx");
+      const hit = messages.find((m) => m.ruleId === "no-restricted-syntax");
+      expect(hit?.message, code).toContain("createAction");
+    }
+  });
+
+  it('allows a file-level "use server" directive', async () => {
+    const messages = await ruleIds(
+      '"use server";\nexport const x = 1;\n',
+      "src/features/tasks/actions/x.ts",
+    );
+    expect(messages.map((m) => m.ruleId)).not.toContain("no-restricted-syntax");
+  });
+
   it("blocks services from importing the db", async () => {
     const messages = await ruleIds(
       'import { db } from "@/db/client";\nexport const x = db;\n',
