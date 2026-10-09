@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import fg from "fast-glob";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { findUnwrappedExports, isAction } from "@/server/actions/action-brand";
+import { findUnwrappedExports, isAction } from "@/server/actions/create-action";
 import * as fixture from "../../fixtures/actions/mixed";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -51,6 +51,17 @@ describe("every exported Server Action is wrapped by createAction", () => {
     expect(isAction(fixture.rawExport)).toBe(false);
     expect(Object.keys(fixture.wrappedAction)).toEqual([]);
     expect(findUnwrappedExports(fixture)).toEqual(["rawExport"]);
+  });
+
+  it("keeps the brand off the function object, so it cannot be read or copied", () => {
+    expect(Reflect.ownKeys(fixture.wrappedAction).filter((key) => typeof key === "symbol")).toEqual(
+      [],
+    );
+    const forged = Object.defineProperties(
+      (input: unknown) => Promise.resolve(input),
+      Object.getOwnPropertyDescriptors(fixture.wrappedAction),
+    );
+    expect(isAction(forged)).toBe(false);
   });
 
   it("detects only real file-level directives", () => {

@@ -12,7 +12,6 @@ import {
 import { toSafeError } from "@/server/errors/to-safe-error";
 import type { AuthPort } from "@/server/ports/auth";
 import type { Logger } from "@/server/ports/logger";
-import { brandAction } from "./action-brand";
 
 export type AuthContext = { userId: string };
 export type WorkspaceCtx = { userId: string; workspaceId: string; role: Role };
@@ -64,6 +63,27 @@ type ActionConfig<S extends InputSchema, T> =
 type AnyConfig = ActionConfig<InputSchema, unknown>;
 
 export type CreateAction = <S extends InputSchema, T>(config: ActionConfig<S, T>) => Action<T>;
+
+// Functions built by createAction. Module-private and held outside the function objects, so no other module can mark
+// a raw handler as wrapped, and copying a wrapped action's properties onto another function does not copy the mark.
+const wrappedActions = new WeakSet<object>();
+
+function brandAction<F extends (input: unknown) => Promise<unknown>>(fn: F): F {
+  wrappedActions.add(fn);
+  return fn;
+}
+
+/** True when `value` was produced by createAction. */
+export function isAction(value: unknown): boolean {
+  return typeof value === "function" && wrappedActions.has(value);
+}
+
+/** Names of a module's exported functions that were not built with createAction. Non-function exports are ignored. */
+export function findUnwrappedExports(mod: Record<string, unknown>): string[] {
+  return Object.entries(mod)
+    .filter(([, value]) => typeof value === "function" && !isAction(value))
+    .map(([name]) => name);
+}
 
 const uuidSchema = z.uuid();
 const ROOT_FIELD = "_root";
