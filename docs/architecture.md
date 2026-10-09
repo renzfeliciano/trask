@@ -29,9 +29,9 @@ createAction (src/server/actions/create-action.ts)
   7. errors           toSafeError → { code, message }; unexpected errors logged with allow-listed fields
                      ▼
 repository (src/server/<module>/*repository.ts)
-  withTenant(ctx)     each query runs in a transaction that first sets app.user_id
+  withWorkspace(ctx)  each query runs in a transaction that first sets app.user_id and app.workspace_id
                      ▼
-Postgres as trask_app  row-level security: rows of workspaces the user belongs to, nothing else
+Postgres as trask_app  row-level security: rows of the authorized workspace, if the user belongs to it
 ```
 
 Phase 0 builds steps 1–7 with an `AuthPort` interface; the Better Auth adapter that implements it
@@ -59,14 +59,16 @@ comparisons apply to `src/**` only (see [ADR 0001](decisions/0001-modular-monoli
 
 ## Tenant isolation, four layers
 
-1. **Scoped repositories:** repository functions take a context (`{ userId }` today, `WorkspaceCtx` for
-   workspace data) and run through `withTenant` (`src/db/tenant.ts`).
+1. **Scoped repositories:** repository functions for workspace data take the `WorkspaceCtx` from
+   `createAction` and run through `withWorkspace` (`src/db/tenant.ts`); reads across the user's
+   workspaces (their workspaces and memberships) take `{ userId }` and use `withTenant`.
 2. **Authorization:** `createAction` resolves the role from the database on every request and calls
    `assertCan`. Roles rank `VIEWER < MEMBER < ADMIN < OWNER` (`src/server/authz/`).
 3. **Composite foreign keys:** a child row's `workspaceId` is part of its foreign key, so the database
    rejects a task that points at another workspace's column.
-4. **Row-level security:** policies call `app.is_member(workspaceId)`; without `app.user_id` set, every
-   policy hides every row.
+4. **Row-level security:** policies require `app.is_member(workspaceId)` and, when `app.workspace_id` is
+   set, that the row belongs to that workspace (R39); without `app.user_id` set, every policy hides
+   every row.
 
 Details and trade-offs: [ADR 0004](decisions/0004-tenant-isolation-composite-fk-and-rls.md).
 
@@ -105,7 +107,7 @@ src/proxy.ts            Next 16 proxy (formerly middleware)
 src/instrumentation.ts  start-up hook: validates env, exits on failure (Node runtime only)
 src/components/         design system (ui/), brand (logo, wordmark, mascot), theme provider
 src/config/env.ts       environment schema
-src/db/                 Prisma client (getDb) and withTenant
+src/db/                 Prisma client (getDb), withWorkspace and withTenant
 src/lib/                pure helpers: cn, rank keys, safe redirects, Result
 src/server/             server-only code: actions, authz, crypto, errors, health, http, ports,
                         adapters, seed guard, workspaces (membership repository)

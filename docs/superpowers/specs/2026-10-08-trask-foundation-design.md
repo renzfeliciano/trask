@@ -530,6 +530,17 @@ Decisions made while planning and building Phase 0. Where they differ from §1�
   server with `NODE_ENV=production`; WebKit runs in CI only.
 - **R36 — the CI bundle-scan guard requires `DATABASE_URL`, `MIGRATION_DATABASE_URL` and
   `ENCRYPTION_KEY`** to be set, rather than "any value" (pnpm injects its own variables).
+- **R28 — the wrapped-actions test covers every file-level `"use server"` module under `src/`,** found
+  with the TypeScript compiler, not only `src/features/**/actions/`; lint bans inline `"use server"`
+  functions; only `create-action.ts` can brand an action.
+- **R39 — row-level security is scoped to the authorized workspace** (§6 "RLS design"). Policies are
+  `app.is_member(ws) AND (app.current_workspace_id() IS NULL OR ws = app.current_workspace_id())`.
+  `withWorkspace(ctx)` sets `app.user_id` and `app.workspace_id`; repositories for workspace-owned data
+  must use it with the `WorkspaceCtx` from `createAction`. `withTenant` (user only) remains for reads
+  across the user's workspaces. Without it, a role checked in one workspace could be spent on another
+  workspace the user belongs to. ADR 0004.
+- **R40 — §7 coverage thresholds are deferred to Phase 11 (hardening).** Phase 0 has no feature code to
+  measure, so a threshold now would only measure scaffolding.
 
 ### Other Phase 0 facts that refine this spec
 
@@ -539,8 +550,8 @@ Decisions made while planning and building Phase 0. Where they differ from §1�
 - **Postgres 18 is required** (`uuidv7()` in the migrations). On Neon, `trask_app` and `trask_migrator`
   are created by SQL before the first deploy, and `trask_migrator` gets `CREATE` on the database and on
   schema `public`.
-- **RLS separates workspaces, not roles.** Any member can write at the database level; `assertCan` is the
-  role barrier. Ids are server-generated (unique checks run before RLS). The `User` table is outside RLS
+- **RLS separates workspaces, not roles.** Any member can write at the database level within the
+  workspace a request is scoped to (R39); `assertCan` is the role barrier. Ids are server-generated (unique checks run before RLS). The `User` table is outside RLS
   until Phase 1 decides.
 - Libraries for later phases (Better Auth, TanStack Query, dnd-kit, cmdk) are not installed yet; knip
   rejects unused dependencies. `@types/node` is pinned to the 24 line.

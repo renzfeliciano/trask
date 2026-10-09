@@ -5,19 +5,19 @@ the safe way to write code is also the easy way.
 
 ## What we built
 
-| Piece                       | Where                                                              | One line                                                                      |
-| --------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| Env validation              | `src/config/env.ts`                                                | Zod checks every variable; errors name the variable, never the value.         |
-| Error model                 | `src/server/errors/`                                               | `AppError` subclasses; `toSafeError` turns anything into `{ code, message }`. |
-| Logger                      | `src/server/ports/logger.ts`, `src/server/adapters/pino-logger.ts` | pino behind a port, with redaction.                                           |
-| Roles and permissions       | `src/server/authz/`                                                | Ranked roles, one permission table, `can` / `assertCan`.                      |
-| Server Action wrapper       | `src/server/actions/create-action.ts`                              | Session, verified email, strict input, role, permission, safe errors.         |
-| Schema and tenant integrity | `prisma/schema.prisma`, `prisma/migrations/`                       | Composite foreign keys, least-privilege grants, row-level security.           |
-| Tenant-scoped client        | `src/db/tenant.ts`                                                 | `withTenant(ctx)` sets `app.user_id` inside each query's transaction.         |
-| Web hardening               | `src/proxy.ts`, `src/server/http/`                                 | Nonce CSP, security headers, blocked paths, default-deny redirects.           |
-| Design system               | `src/app/globals.css`, `src/components/`                           | Brand tokens (contrast-tested), primitives, logo, mascot states.              |
-| Tests                       | `tests/unit`, `tests/integration`, `tests/e2e`                     | ~450 unit, RLS/FK integration against real Postgres, mobile-first E2E.        |
-| CI and supply chain         | `.github/workflows/ci.yml`, `renovate.json`                        | Lint → tests → build + bundle scan → E2E, plus gitleaks, audit, Semgrep.      |
+| Piece                       | Where                                                              | One line                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Env validation              | `src/config/env.ts`                                                | Zod checks every variable; errors name the variable, never the value.                                                                                            |
+| Error model                 | `src/server/errors/`                                               | `AppError` subclasses; `toSafeError` turns anything into `{ code, message }`.                                                                                    |
+| Logger                      | `src/server/ports/logger.ts`, `src/server/adapters/pino-logger.ts` | pino behind a port, with redaction.                                                                                                                              |
+| Roles and permissions       | `src/server/authz/`                                                | Ranked roles, one permission table, `can` / `assertCan`.                                                                                                         |
+| Server Action wrapper       | `src/server/actions/create-action.ts`                              | Session, verified email, strict input, role, permission, safe errors.                                                                                            |
+| Schema and tenant integrity | `prisma/schema.prisma`, `prisma/migrations/`                       | Composite foreign keys, least-privilege grants, row-level security.                                                                                              |
+| Tenant-scoped client        | `src/db/tenant.ts`                                                 | `withWorkspace(ctx)` sets `app.user_id` and `app.workspace_id` inside each query's transaction; `withTenant(ctx)` sets only the user, for cross-workspace reads. |
+| Web hardening               | `src/proxy.ts`, `src/server/http/`                                 | Nonce CSP, security headers, blocked paths, default-deny redirects.                                                                                              |
+| Design system               | `src/app/globals.css`, `src/components/`                           | Brand tokens (contrast-tested), primitives, logo, mascot states.                                                                                                 |
+| Tests                       | `tests/unit`, `tests/integration`, `tests/e2e`                     | ~450 unit, RLS/FK integration against real Postgres, mobile-first E2E.                                                                                           |
+| CI and supply chain         | `.github/workflows/ci.yml`, `renovate.json`                        | Lint → tests → build + bundle scan → E2E, plus gitleaks, audit, Semgrep.                                                                                         |
 
 ## Why this architecture
 
@@ -49,6 +49,7 @@ the safe way to write code is also the easy way.
 
 - RLS separates **workspaces**, not roles: a VIEWER's session could write at the database level.
   `assertCan` in `createAction` is the only role check, which is why "every action is wrapped" is a test.
+  `withWorkspace` keeps a request inside the one workspace whose role `createAction` checked.
 - The proxy only checks that a session cookie **exists**. Real validation is server-side (Phase 1).
 - Ids are always server-generated: unique constraints are checked before RLS, so a client-chosen id
   could reveal that another tenant's row exists.
@@ -69,7 +70,6 @@ the safe way to write code is also the easy way.
 ## What we can improve later
 
 - Log the cause when the health ping fails (today the log line only says "health check failed").
-- Widen the wrapped-action test to every `"use server"` file; keep `brandAction` private.
 - Tenant-isolation registry: one isolation test per repository method (spec §7), once domain
   repositories exist.
 - Deeper log redaction (`err.cause`, arrays) or a structured error serializer.
@@ -78,7 +78,7 @@ the safe way to write code is also the easy way.
 
 ## Check yourself
 
-**1. A teammate adds a repository function and forgets `withTenant`, calling `getDb().board.findMany()`
+**1. A teammate adds a repository function and forgets `withWorkspace`, calling `getDb().board.findMany()`
 directly. What happens?**
 It returns an empty list, not an error and not every board. `app.user_id` is unset, so
 `app.is_member()` is false and the policy hides all rows (fail closed). Lint allows the import because
@@ -88,7 +88,7 @@ The bug shows up as "my boards are missing", never as a data leak.
 **2. A VIEWER calls a `task.create` action with a hand-crafted request. Which layer stops them?**
 `createAction`: it loads the role from `WorkspaceMember` (never from input) and `assertCan` throws
 `AuthorizationError` because `task.create` needs MEMBER. RLS would **not** stop it: the VIEWER is a
-member of the workspace, and RLS only checks membership.
+member of the workspace, and RLS checks membership and workspace, never roles.
 
 **3. A request sends `workspaceId` of a workspace the user is not in. What does the client see?**
 `NOT_FOUND`, the same answer as for a workspace that does not exist, so ids cannot be probed. Even if
@@ -107,3 +107,11 @@ names the variable and never prints a value. `next build` skips the check becaus
 secrets, so the build is green. On Vercel there is no long-running server: each cold start of the new
 deployment fails with that message in the runtime logs. That is why the README's deploy checklist ends
 with `GET /api/health`.
+
+**6. An OWNER of workspace W1 is a VIEWER in W2. They call a W1 action with the id of a W2 board.
+What stops the write?**
+`createAction` checks the role in W1 (OWNER, allowed) and passes a `WorkspaceCtx` for W1. The repository
+runs through `withWorkspace(ctx)`, which sets `app.workspace_id` to W1, so every policy refuses the W2
+row: it is invisible to reads, updates and deletes, and an insert into W2 fails `WITH CHECK`. With
+`withTenant` alone the write would succeed, because the user is a member of W2. That is why workspace
+data must use `withWorkspace` (Ruling R39).

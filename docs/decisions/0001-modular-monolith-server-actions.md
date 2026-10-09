@@ -17,8 +17,13 @@ workspace role, permission, safe errors.
   `public: true`, checked at definition time. Each action has a `name` used only in logs.
 - Lint enforces the layering (`eslint-plugin-boundaries`): only repositories import `src/db`; routes and
   actions never import repositories. `tests/unit/lint-rules.test.ts` proves each rule fires.
-- A unit test (`tests/unit/server/actions-wrapped.test.ts`) fails if a module under
-  `src/features/**/actions/` exports a function that `createAction` did not build.
+- A unit test (`tests/unit/server/actions-wrapped.test.ts`) parses every `src/**/*.{ts,tsx}` file with
+  the TypeScript compiler and fails if any module whose directive prologue holds `"use server"` exports a
+  function that `createAction` did not build (Ruling R28: a folder convention is not a security
+  boundary). Lint bans inline `"use server"` directives inside function bodies, which that scan cannot
+  see; actions are always file-level modules.
+- Only `create-action.ts` can mark a function as an action: the mark is a module-private `WeakSet`, not
+  an exported helper or a property on the function, so it cannot be applied, read or copied elsewhere.
 
 ## Rejected alternatives
 
@@ -45,8 +50,8 @@ workspace role, permission, safe errors.
   `instrumentation.ts`) may be imported by every layer and may import `lib`, `config` and non-repository
   server code. That is wider than the layer table in `docs/architecture.md`; per-element grants would
   tighten it.
-- `brandAction` (`src/server/actions/action-brand.ts`) is exported, so any module could mark a raw
-  handler as wrapped and pass the guard test. It should be private to `create-action.ts` (fix-before-merge).
-- The wrapped-action test only finds actions in the `actions/` folders; a `"use server"` file elsewhere
-  would escape it. Widening the scan to every `"use server"` file is planned (folder conventions are not
-  a security boundary).
+- The wrapped-action test imports every `"use server"` module under `src/`, so such a module must be
+  importable in the unit-test environment (no env read at import time, which `getDb()`/`getEnv()`
+  already guarantee). The scan costs a parse of every source file per test run.
+- `createAction` lowercases the validated `workspaceId` before the role lookup, so the role check, the
+  handler context and `withWorkspace` agree on one spelling of the id.
