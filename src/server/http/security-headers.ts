@@ -11,9 +11,16 @@ export function generateNonce(): string {
  * Tailwind and Radix set inline styles at runtime, and style injection is a far smaller risk than
  * script injection (recorded in the threat model). 'unsafe-eval' is development-only: React uses
  * eval there to rebuild server stack traces.
+ *
+ * `upgrade-insecure-requests` is left out only when APP_URL is explicitly plain HTTP (a local
+ * `next start`): WebKit applies it even to http://localhost and rewrites every script and stylesheet to
+ * an https:// URL that does not exist. A missing or unparseable APP_URL keeps it (fail secure).
  */
-export function buildCsp(nonce: string, opts: { dev: boolean }): string {
-  return [
+export function buildCsp(
+  nonce: string,
+  opts: { dev: boolean; appUrl: string | undefined },
+): string {
+  const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${opts.dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
@@ -24,8 +31,14 @@ export function buildCsp(nonce: string, opts: { dev: boolean }): string {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
-  ].join("; ");
+  ];
+  if (!isPlainHttp(opts.appUrl)) directives.push("upgrade-insecure-requests");
+  return directives.join("; ");
+}
+
+function isPlainHttp(appUrl: string | undefined): boolean {
+  if (!appUrl || !URL.canParse(appUrl)) return false;
+  return new URL(appUrl).protocol === "http:";
 }
 
 /** Static response headers for every response. Deliberately no CORS headers: the app is same-origin only. */

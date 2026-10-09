@@ -20,7 +20,10 @@ function withSecurityHeaders(response: NextResponse, csp: string): NextResponse 
 
 export function proxy(request: NextRequest): NextResponse {
   const nonce = generateNonce();
-  const csp = buildCsp(nonce, { dev: process.env.NODE_ENV === "development" });
+  const csp = buildCsp(nonce, {
+    dev: process.env.NODE_ENV === "development",
+    appUrl: process.env.APP_URL,
+  });
   const { pathname, search } = request.nextUrl;
 
   if (

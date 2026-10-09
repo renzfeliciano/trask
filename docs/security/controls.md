@@ -80,16 +80,16 @@ Phase 0 (2026-10-09). Evidence paths are tests unless marked otherwise. Update t
 
 ## Browser & headers
 
-| Control              | Phase  | Status         | How / evidence                                                                                                           |
-| -------------------- | ------ | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| HTTPS everywhere     | P0/P12 | Done (P0 part) | HSTS + `upgrade-insecure-requests`; Vercel TLS at deploy. `tests/unit/server/security-headers.test.ts`                   |
-| CSP with nonces      | P0     | Done           | `security-headers.test.ts`, `proxy.test.ts`; `tests/e2e/smoke.spec.ts` (no CSP violations), `tests/e2e/security.spec.ts` |
-| HSTS                 | P0     | Done           | No preload. `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                     |
-| frame-ancestors none | P0     | Done           | `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                                 |
-| nosniff              | P0     | Done           | `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                                 |
-| Cache-Control        | P0     | Done           | `private, no-store` behind sign-in. `proxy.test.ts`, `tests/e2e/security.spec.ts`                                        |
-| No stack traces      | P0     | Done           | `toSafeError`; generic `error.tsx`. `tests/unit/server/errors.test.ts`                                                   |
-| Remove X-Powered-By  | P0     | Done           | `poweredByHeader: false`. `tests/e2e/security.spec.ts`                                                                   |
+| Control              | Phase  | Status         | How / evidence                                                                                                                                                    |
+| -------------------- | ------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTPS everywhere     | P0/P12 | Done (P0 part) | HSTS + `upgrade-insecure-requests` (omitted only for a plain-HTTP `APP_URL`, i.e. local runs); Vercel TLS at deploy. `tests/unit/server/security-headers.test.ts` |
+| CSP with nonces      | P0     | Done           | `security-headers.test.ts`, `proxy.test.ts`; `tests/e2e/smoke.spec.ts` (no CSP violations), `tests/e2e/security.spec.ts`                                          |
+| HSTS                 | P0     | Done           | No preload. `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                                                              |
+| frame-ancestors none | P0     | Done           | `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                                                                          |
+| nosniff              | P0     | Done           | `security-headers.test.ts`, `tests/e2e/security.spec.ts`                                                                                                          |
+| Cache-Control        | P0     | Done           | `private, no-store` behind sign-in. `proxy.test.ts`, `tests/e2e/security.spec.ts`                                                                                 |
+| No stack traces      | P0     | Done           | `toSafeError`; generic `error.tsx`. `tests/unit/server/errors.test.ts`                                                                                            |
+| Remove X-Powered-By  | P0     | Done           | `poweredByHeader: false`. `tests/e2e/security.spec.ts`                                                                                                            |
 
 ## Secrets
 
