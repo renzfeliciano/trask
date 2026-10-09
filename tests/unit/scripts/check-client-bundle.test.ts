@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { collectSecretValues, findLeaks, runCheck } from "../../../scripts/check-client-bundle";
+import {
+  PUBLIC_ENV_ALLOWLIST,
+  collectSecretValues,
+  findDisallowedPublicKeys,
+  findLeaks,
+  runCheck,
+} from "../../../scripts/check-client-bundle";
 
 const secret = "s3cr3t-Value/with+chars=1234";
 const clean = { path: ".next/static/chunks/app.js", content: 'console.log("hello", 42);' };
@@ -82,15 +88,18 @@ describe("findLeaks", () => {
 });
 
 describe("collectSecretValues", () => {
-  it("keeps server values of 8+ characters and drops NEXT_PUBLIC_*, short and empty values", () => {
-    const values = collectSecretValues({
-      DATABASE_URL: "postgres://u:p@localhost:5432/db",
-      ENCRYPTION_KEY: "abcdefgh",
-      SHORT: "1234567",
-      EMPTY: "",
-      UNSET: undefined,
-      NEXT_PUBLIC_SITE: "https://example.test/public",
-    });
+  it("keeps server values of 8+ characters and drops allowlisted NEXT_PUBLIC_*, short and empty values", () => {
+    const values = collectSecretValues(
+      {
+        DATABASE_URL: "postgres://u:p@localhost:5432/db",
+        ENCRYPTION_KEY: "abcdefgh",
+        SHORT: "1234567",
+        EMPTY: "",
+        UNSET: undefined,
+        NEXT_PUBLIC_SITE: "https://example.test/public",
+      },
+      new Set(["NEXT_PUBLIC_SITE"]),
+    );
     expect(values.sort()).toEqual(["abcdefgh", "postgres://u:p@localhost:5432/db"]);
   });
 
@@ -131,13 +140,50 @@ describe("collectSecretValues", () => {
     ).toHaveLength(2);
   });
 
-  it("treats NEXT_PUBLIC_* as public even when the name looks like a credential", () => {
-    expect(collectSecretValues({ NEXT_PUBLIC_MAPS_KEY: "pk_live_publishable" })).toEqual([]);
+  it("treats an allowlisted NEXT_PUBLIC_* as public even when the name looks like a credential", () => {
+    expect(
+      collectSecretValues(
+        { NEXT_PUBLIC_MAPS_KEY: "pk_live_publishable" },
+        new Set(["NEXT_PUBLIC_MAPS_KEY"]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("still scans the value of a NEXT_PUBLIC_* variable that is not allowlisted", () => {
+    expect(collectSecretValues({ NEXT_PUBLIC_DATABASE_URL: "postgres://u:p@h/db" })).toEqual([
+      "postgres://u:p@h/db",
+    ]);
   });
 
   it("de-duplicates repeated values", () => {
     expect(collectSecretValues({ A_KEY: "same-value-1", B_KEY: "same-value-1" })).toEqual([
       "same-value-1",
+    ]);
+  });
+});
+
+describe("findDisallowedPublicKeys", () => {
+  it("starts with an empty allowlist", () => {
+    expect([...PUBLIC_ENV_ALLOWLIST]).toEqual([]);
+  });
+
+  it("reports every NEXT_PUBLIC_* key that is not allowlisted, whatever its case or value", () => {
+    expect(
+      findDisallowedPublicKeys({
+        NEXT_PUBLIC_DATABASE_URL: "postgres://u:p@h/db",
+        next_public_lower: "x",
+        NEXT_PUBLIC_EMPTY: "",
+        DATABASE_URL: "postgres://u:p@h/db",
+        NEXT_RUNTIME: "nodejs",
+      }),
+    ).toEqual(["NEXT_PUBLIC_DATABASE_URL", "NEXT_PUBLIC_EMPTY", "next_public_lower"]);
+  });
+
+  it("accepts allowlisted keys by exact name only", () => {
+    const allowlist = new Set(["NEXT_PUBLIC_SITE"]);
+    expect(findDisallowedPublicKeys({ NEXT_PUBLIC_SITE: "https://x.test" }, allowlist)).toEqual([]);
+    expect(findDisallowedPublicKeys({ next_public_site: "https://x.test" }, allowlist)).toEqual([
+      "next_public_site",
     ]);
   });
 });
@@ -183,6 +229,27 @@ describe("runCheck", () => {
       "LEAK .next/static/chunks/leak.js: contains the value of a server-only environment variable",
     );
     expect(output).not.toContain(env.APP_DB_SECRET);
+  });
+
+  it("exits 1 on a NEXT_PUBLIC_* variable that is not allowlisted, naming the key and never the value", async () => {
+    const cwd = await project({ "ok.js": "console.log(1)" });
+    const { lines, log } = capture();
+    const value = "postgres://trask_app:hunter2-secret@db.test/trask";
+    expect(await runCheck({ cwd, env: { ...env, NEXT_PUBLIC_DATABASE_URL: value }, log })).toBe(1);
+    const output = lines.join("\n");
+    expect(output).toContain(
+      "PUBLIC NEXT_PUBLIC_DATABASE_URL: NEXT_PUBLIC_ variable is not on PUBLIC_ENV_ALLOWLIST",
+    );
+    expect(output).toContain("1 NEXT_PUBLIC_ variable(s) not allowlisted");
+    expect(output).not.toContain(value);
+    expect(output).not.toContain("hunter2");
+  });
+
+  it("exits 1, not 2, on an unlisted NEXT_PUBLIC_* variable even without a build", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bundle-scan-"));
+    dirs.push(cwd);
+    const { log } = capture();
+    expect(await runCheck({ cwd, env: { NEXT_PUBLIC_ANY: "x" }, log })).toBe(1);
   });
 
   it("exits 2 when there is no build to scan", async () => {

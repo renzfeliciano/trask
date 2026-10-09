@@ -1,9 +1,11 @@
-// Fails when the browser bundle (.next/static/**) contains a server secret value or the name of a server secret.
-// Library module (pure findLeaks/collectSecretValues plus runCheck); the executable entry is check-client-bundle.cli.ts.
+// Fails when the browser bundle (.next/static/**) contains a server secret value or the name of a server secret, or
+// when the environment holds a NEXT_PUBLIC_* variable that is not on PUBLIC_ENV_ALLOWLIST (Next would inline it).
+// Library module (pure findLeaks/collectSecretValues/findDisallowedPublicKeys plus runCheck); the executable entry is
+// check-client-bundle.cli.ts.
 // Usage (after `pnpm build`): pnpm check:bundle   (exit code 1 on any leak, 2 when there is nothing to scan)
 //
-// Secret values come from process.env only: every variable that is not NEXT_PUBLIC_*, is not on the non-secret list
-// below and holds 8 or more characters. CI exports the .env.test values before running this (see Task 15); locally,
+// Secret values come from process.env only: every variable that is not an allowlisted NEXT_PUBLIC_* one, is not on the
+// non-secret list below and holds 8 or more characters. CI exports the .env.test values before running this (see Task 15); locally,
 // export them (or source your .env) in the same shell. Values are never printed, only the file path and the reason.
 import fg from "fast-glob";
 import { readFile } from "node:fs/promises";
@@ -65,7 +67,11 @@ const NON_SECRET_KEYS = new Set([
   "github_repository",
   "github_workspace",
 ]);
-// Browser-exposed by definition (Next inlines them), so never a server secret. Nothing else is exempt by prefix.
+// Next inlines every NEXT_PUBLIC_* variable into the browser bundle, so each one must be reviewed and listed here by exact
+// name. Any other NEXT_PUBLIC_* key in the environment fails the check (spec §6): renaming DATABASE_URL to
+// NEXT_PUBLIC_DATABASE_URL must not publish it. Empty until a feature needs a public variable.
+export const PUBLIC_ENV_ALLOWLIST: ReadonlySet<string> = new Set<string>([]);
+// Matched case-insensitively, so a differently cased key fails closed instead of slipping past the allowlist.
 const PUBLIC_PREFIX = "next_public_";
 // Deny-override: a key that looks like a credential is always scanned, even if an exemption above would match it.
 const CREDENTIAL_KEY = /TOKEN|SECRET|KEY|PASSWORD|PASS|CREDENTIAL|AUTH/i;
@@ -86,12 +92,28 @@ function referencesName(content: string, name: string): boolean {
   return false;
 }
 
-export function collectSecretValues(env: Record<string, string | undefined>): string[] {
+const isPublicKey = (key: string): boolean => key.toLowerCase().startsWith(PUBLIC_PREFIX);
+
+/** NEXT_PUBLIC_* keys present in `env` (set or empty) that are not on the allowlist, sorted. Never their values. */
+export function findDisallowedPublicKeys(
+  env: Record<string, string | undefined>,
+  allowlist: ReadonlySet<string> = PUBLIC_ENV_ALLOWLIST,
+): string[] {
+  return Object.keys(env)
+    .filter((key) => isPublicKey(key) && !allowlist.has(key))
+    .sort();
+}
+
+export function collectSecretValues(
+  env: Record<string, string | undefined>,
+  publicAllowlist: ReadonlySet<string> = PUBLIC_ENV_ALLOWLIST,
+): string[] {
   const values = new Set<string>();
   for (const [key, value] of Object.entries(env)) {
     const lower = key.toLowerCase();
     if (value === undefined || value.length < MIN_SECRET_LENGTH) continue;
-    if (lower.startsWith(PUBLIC_PREFIX)) continue;
+    // Only reviewed public variables are exempt; an unlisted NEXT_PUBLIC_* value is still searched for as a secret.
+    if (isPublicKey(key) && publicAllowlist.has(key)) continue;
     if (NON_SECRET_KEYS.has(lower) && !CREDENTIAL_KEY.test(key)) continue;
     values.add(value);
   }
@@ -128,13 +150,19 @@ export interface CheckOptions {
   log?: Pick<Console, "info" | "error">;
 }
 
-/** Exit codes: 0 clean, 1 leak (or no secrets to check for in CI), 2 nothing to scan. */
+/** Exit codes: 0 clean, 1 leak or unlisted NEXT_PUBLIC_* variable (or no secrets to check for in CI), 2 nothing to scan. */
 export async function runCheck({ cwd, env, log = console }: CheckOptions): Promise<number> {
+  const disallowedPublic = findDisallowedPublicKeys(env);
+  for (const key of disallowedPublic) {
+    log.error(
+      `PUBLIC ${key}: NEXT_PUBLIC_ variable is not on PUBLIC_ENV_ALLOWLIST in scripts/check-client-bundle.ts (Next inlines it into the browser bundle)`,
+    );
+  }
   const paths = await fg(".next/static/**/*", { cwd, dot: true, onlyFiles: true, unique: true });
   const scannable = paths.map(toPosix).filter((path) => !BINARY_EXTENSIONS.test(path));
   if (scannable.length === 0) {
     log.error("No files under .next/static to scan. Run `pnpm build` first.");
-    return 2;
+    return disallowedPublic.length > 0 ? 1 : 2;
   }
   const files = await Promise.all(
     // Paths come from the glob over .next/static, not from user input.
@@ -144,9 +172,9 @@ export async function runCheck({ cwd, env, log = console }: CheckOptions): Promi
   const secretValues = collectSecretValues(env);
   const leaks = findLeaks(files, secretValues);
   for (const leak of leaks) log.error(`LEAK ${leak.path}: ${leak.reason}`);
-  if (leaks.length > 0) {
+  if (leaks.length > 0 || disallowedPublic.length > 0) {
     log.error(
-      `Client bundle check failed: ${String(leaks.length)} leak(s) in ${String(files.length)} files.`,
+      `Client bundle check failed: ${String(leaks.length)} leak(s) in ${String(files.length)} files, ${String(disallowedPublic.length)} NEXT_PUBLIC_ variable(s) not allowlisted.`,
     );
     return 1;
   }
