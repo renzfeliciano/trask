@@ -30,15 +30,15 @@ against the Docker database to confirm no schema drift, and `scripts/verify-db-r
 
 ## Watch list
 
-| Item                           | Waiting for                                          | Then                                                                                                               |
-| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| TypeScript 7.x                 | typescript-eslint support (it supports `<6.1` today) | Move from 6.0.3; check `tsc` flags and the ESLint type-aware rules.                                                |
-| Prisma 8                       | A stable 8.x release that Better Auth supports       | Follow the Prisma upgrade guide; re-check `@prisma/adapter-pg`, the hand-edited FK SQL and `withTenant`.           |
-| `@dnd-kit/react` 1.0           | A 1.0 release                                        | Phase 6 decides between it and `@dnd-kit/core` + `@dnd-kit/sortable`.                                              |
-| Node 26                        | Node 26 entering LTS                                 | Update `.nvmrc`, `engines`, `@types/node` (Renovate asks for dashboard approval first).                            |
-| Next 16.4 + eslint-config-next | Both older than 3 days (Renovate "next" group)       | Remove the `@eslint/compat` `fixupConfigRules` wrapper in `eslint.config.mjs` and the `@eslint/compat` dependency. |
-| `security.txt` expiry          | 2027-10-08 (`public/.well-known/security.txt`)       | Set `Expires` a year ahead; an expired file is ignored by scanners.                                                |
-| gitleaks, Semgrep              | New releases (not tracked by Renovate)               | Bump `GITLEAKS_VERSION` + `GITLEAKS_SHA256` and `SEMGREP_VERSION` in `.github/workflows/ci.yml`.                   |
+| Item                           | Waiting for                                          | Then                                                                                                                      |
+| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript 7.x                 | typescript-eslint support (it supports `<6.1` today) | Move from 6.0.3; check `tsc` flags and the ESLint type-aware rules.                                                       |
+| Prisma 8                       | A stable 8.x release that Better Auth supports       | Follow the Prisma upgrade guide; re-check `@prisma/adapter-pg`, the hand-edited FK SQL, `withTenant` and `withWorkspace`. |
+| `@dnd-kit/react` 1.0           | A 1.0 release                                        | Phase 6 decides between it and `@dnd-kit/core` + `@dnd-kit/sortable`.                                                     |
+| Node 26                        | Node 26 entering LTS                                 | Update `.nvmrc`, `engines`, `@types/node` (Renovate asks for dashboard approval first).                                   |
+| Next 16.4 + eslint-config-next | Both older than 3 days (Renovate "next" group)       | Remove the `@eslint/compat` `fixupConfigRules` wrapper in `eslint.config.mjs` and the `@eslint/compat` dependency.        |
+| `security.txt` expiry          | 2027-04-08 (`public/.well-known/security.txt`)       | Renew it with `Expires` less than a year ahead (RFC 9116); an expired file is ignored by scanners.                        |
+| gitleaks, Semgrep              | New releases (not tracked by Renovate)               | Bump `GITLEAKS_VERSION` + `GITLEAKS_SHA256` and `SEMGREP_VERSION` in `.github/workflows/ci.yml`.                          |
 
 ## shadcn components
 
