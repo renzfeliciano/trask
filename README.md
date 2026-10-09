@@ -184,10 +184,10 @@ pnpm build && pnpm check:bundle
 
 ## First push, CI and repository settings
 
-1. Push the branch and open a pull request to `main`:
-   `git push -u origin phase-0-foundation`. CI (`.github/workflows/ci.yml`) runs the jobs `checks`
-   (lint, typecheck, unit, knip), `integration`, `build` (+ bundle scan), `e2e` (pull requests to
-   `main` only) and `security` (gitleaks over the full history, `pnpm audit`, Semgrep). Confirm all green.
+1. Work is committed straight to `main` and pushed (`git push`). Every push to `main` (and every pull
+   request to `main`) runs CI (`.github/workflows/ci.yml`): `checks` (lint, typecheck, unit, knip,
+   format), `integration`, `build` (+ bundle scan), `e2e` and `security` (gitleaks over the full history,
+   `pnpm audit`, Semgrep). Confirm all green in the repository's Actions tab.
 2. Install the free [Renovate GitHub app](https://github.com/apps/renovate) on the repository. Its first
    run opens a "Dependency Dashboard" issue. Configuration: `renovate.json`.
 3. Settings > Branches > add a protection rule for `main`: require a pull request; require the status

@@ -95,7 +95,7 @@ jobs:
 
   e2e:
     name: e2e
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
     needs: [build, integration]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
