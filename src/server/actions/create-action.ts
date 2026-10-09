@@ -169,9 +169,11 @@ export function createActionFactory(deps: CreateActionDeps): CreateAction {
         } else if (config.authenticated === true) {
           data = await config.handler({ userId }, input);
         } else {
-          const workspaceId = config.workspaceId(input);
+          const rawWorkspaceId = config.workspaceId(input);
           // A malformed id cannot name a workspace the user belongs to, so it gets the same answer as a non-member.
-          if (!uuidSchema.safeParse(workspaceId).success) throw new NotFoundError();
+          if (!uuidSchema.safeParse(rawWorkspaceId).success) throw new NotFoundError();
+          // One canonical spelling from here on, so the role lookup, the handler and withWorkspace agree on the id.
+          const workspaceId = rawWorkspaceId.toLowerCase();
           const role = await deps.findRole({ userId }, workspaceId);
           // Non-members get NOT_FOUND, not AUTHORIZATION, so the workspace's existence is not revealed.
           if (role === null) throw new NotFoundError();

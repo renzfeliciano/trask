@@ -166,6 +166,23 @@ describe("createAction: workspace actions", () => {
     );
   });
 
+  it("lowercases the workspace id before the role lookup and in the handler context", async () => {
+    const { createAction, findRole } = setup({ role: "MEMBER" });
+    const { action, handler } = createTaskAction(createAction);
+    const upper = WORKSPACE_ID.toUpperCase();
+    expect(upper).not.toBe(WORKSPACE_ID);
+
+    const result = await action({ workspaceId: upper, title: "Write the brief" });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(findRole).toHaveBeenCalledWith({ userId: USER_ID }, WORKSPACE_ID);
+    expect(handler.mock.calls[0]?.[0]).toEqual({
+      userId: USER_ID,
+      workspaceId: WORKSPACE_ID,
+      role: "MEMBER",
+    });
+  });
+
   it("hides an unexpected handler failure and logs one allow-listed error entry", async () => {
     const { createAction, logger } = setup();
     const { action } = createTaskAction(
