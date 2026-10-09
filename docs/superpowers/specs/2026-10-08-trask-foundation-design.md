@@ -2,6 +2,7 @@
 
 - **Date:** 2026-10-08
 - **Status:** Draft — awaiting review
+- **Amended:** 2026-10-09 — decisions made while building Phase 0 are in §12 "Amendments (2026-10-09)"; where they differ from the text above, §12 wins.
 - **Scope:** Overall architecture, data model, folder structure, design system, security baseline, environments/testing/CI, and the Phase 0 build plan. Phases 1–12 each get their own short spec → plan → build cycle that refines this document.
 
 ---
@@ -183,17 +184,24 @@ Contrast ratios below were computed (WCAG 2.1) and are enforced by the token con
 | Token | Light | Dark | Use / rule |
 |---|---|---|---|
 | `--primary` | `#7C3AED` | `#7C3AED` | Primary buttons, selection. White text on it = 5.7:1 ✓ |
+| `--primary-hover` | `#6D28D9` | `#6D28D9` | Primary button hover. A solid shade, not opacity, so white text keeps ≥ 4.5:1 |
 | `--primary-text` | `#7C3AED` (5.4:1 on bg) | `#A78BFA` (7.0:1 on bg) | Links, active nav, primary-colored text |
 | `--secondary` | `#A78BFA` | `#A78BFA` | **Fills only** (progress, chips). Never text on white (2.7:1 ✗); dark text on it is fine (5.9:1) |
+| `--secondary-foreground` | `#1E1B4B` | `#1E1B4B` | Text on `--secondary` fills, both themes |
 | `--accent` | `#C4B5FD` | `#2E2650` | Hover/selected backgrounds, drop targets |
 | `--background` | `#F8F7FF` | `#0F0D1F` | App background |
 | `--surface` | `#FFFFFF` | `#1A1730` | Cards, sheets, columns |
 | `--foreground` | `#1E1B4B` (15:1) | `#EDE9FE` (16:1) | Body text |
 | `--muted-foreground` | `#6B7280` (4.5:1) | `#9CA3AF` (7.5:1) | Secondary text; never smaller than 13 px |
 | `--ring` | `#7C3AED` | `#A78BFA` | Focus outline (2 px + 2 px offset) |
+| `--input` | `#8E89B5` | `#6A6592` | Form-control borders: ≥ 3:1 against surface and background (WCAG 1.4.11); `--border` is decorative only |
 | `--highlight` | `#FACC15` (dark text 10.4:1) | same | Due-soon, Focus Mode marker — the warm complement to violet |
-| `--success` / `--danger` / `--info` | `#16A34A` / `#DC2626` / `#2563EB` | lighter variants | Danger button white text 4.8:1 ✓ |
+| `--highlight-foreground` | `#1E1B4B` | `#1E1B4B` | Text on `--highlight`, both themes |
+| `--success` / `--danger` / `--info` | `#16A34A` / `#DC2626` / `#2563EB` | `#4ADE80` / `#F87171` / `#60A5FA` | Danger button white text 4.8:1 ✓ (light). Dark danger carries dark text (`--danger-foreground` `#0F0D1F`) |
+| `--danger-hover` | `#B91C1C` | `#FCA5A5` | Danger button hover; lightens in dark mode because dark danger carries dark text |
+| `--warning` | `#EA580C` | `#FB923C` | Icons and borders only (orange, distinct from `--highlight`); never a text background |
 | Labels (10) | pink `#F472B6`, coral `#F87171`, green `#4ADE80`, yellow `#FACC15`, blue `#60A5FA` + 5 matched tints | same hues, adjusted | Label chips use dark text |
+| `--label-foreground` | `#1E1B4B` | `#1E1B4B` | Text on every label chip, both themes |
 
 - **Brand gradient** `#7C3AED → #A78BFA` is reserved for the app icon and the landing-page hero. Never on buttons, cards, headers or other product UI.
 - Neutrals are slightly violet-tinted; the board stays mostly white/near-white so task content leads.
@@ -458,6 +466,86 @@ Phase 0 also adds `knip` (unused code/deps) to CI and `docs/content-style.md` wi
 
 ## 11. Explicitly deferred
 Organizations, per-board membership, multiple checklists per task, realtime transport, AI features, list/timeline/calendar views, Redis, external search engines, paid monitoring.
+
+---
+
+## 12. Amendments (2026-10-09)
+
+Decisions made while planning and building Phase 0. Where they differ from §1–§11, this section wins.
+"R" numbers match the rulings referenced in code comments. Rationale lives in the ADRs (`docs/decisions/`).
+
+### From the Phase 0 plan
+
+1. **`@prisma/adapter-pg` instead of `@prisma/adapter-neon`** (§2 Stack, §8, §9.7). One driver
+   (node-postgres over TCP) for Docker tests and Neon's pooled endpoint, so tests exercise the production
+   driver. `@neondatabase/serverless` is not used. `pg` is a direct exact dependency. ADR 0002.
+2. **RLS is `ENABLE`d, not `FORCE`d** (§6 "RLS design", first bullet). `trask_app` is not the table owner,
+   so RLS always applies to it; `FORCE` would also bind the owner and make the `SECURITY DEFINER`
+   membership function recurse into its own policy. ADR 0004.
+3. **Better Auth `Session`/`Account`/`Verification` tables arrive in Phase 1** (§3 Auth, §9.7) via the
+   Better Auth CLI as an additive migration. Phase 0 creates only `User` with Better Auth's core fields.
+4. **`src/proxy.ts`**, Next.js 16's replacement for `middleware.ts` (§4, §6, §9.5: read "middleware" as
+   "proxy").
+5. **`Activity` and `AuditEvent` are append-only by grants:** `trask_app` has `SELECT, INSERT` on
+   `Activity` and `INSERT` only on `AuditEvent`.
+6. **Idempotency lives on the entity, not in `createAction`** (§6 "Idempotency", §9.6). A create action
+   that needs it adds a nullable `idempotencyKey` with `@@unique([workspaceId, idempotencyKey])` (first
+   use: task creation, Phase 5); the service returns the existing record on that unique violation.
+
+### Rulings made during the build
+
+- **R14 — "latest stable" means the latest stable release that passes the 3-day release-age gate**
+  (§6 supply chain + §8 together). Next.js and eslint-config-next are pinned at **16.3.8** (16.4.0 was
+  2 days old); Renovate moves them. R15 keeps a `@eslint/compat` shim until eslint-config-next 16.4+.
+- **R37 — the 3-day `minimumReleaseAge` stays** (pnpm and Renovate). CI excludes exactly the two Semgrep
+  registry rules that demand 7 days.
+- **R5 — `AuditEvent` is outside RLS.** Its protection is the insert-only grant; it has no tenant read
+  path. It is written with `createMany` (no `RETURNING`). It is not tamper-evident.
+- **R20 — `Task → Column` FK is `(columnId, boardId, workspaceId) → Column(id, boardId, workspaceId)`**
+  (§3 "Integrity rules"), so a task's column is always on the task's own board.
+- **R23 — every composite tenant FK is `ON UPDATE RESTRICT`.** Cascaded key updates bypass RLS and
+  could move a subtree into another workspace. Moving a board between workspaces needs explicit logic.
+- **R21 — the Prisma client is created lazily (`getDb()`),** and R3 does the same for the logger
+  (`getLogger()`): importing a module never requires env, so unit tests and `next build` need no secrets.
+  §4 "invalid config = app refuses to start" is kept by `src/instrumentation.ts`: when the Node server
+  starts it validates the environment and exits with code 1, printing the failing variable names and
+  never their values. `next build` and the edge runtime skip the check.
+- **R25 — scripts run by `tsx` use `tsconfig.scripts.json`,** which maps `server-only` to the test stub
+  (the npm package is pre-1.0 and not installed).
+- **R26 — the seed guard allows only `development` and `test`;** an unset `NODE_ENV` is refused.
+- **R27 — `createAction` is one generic function over a discriminated config** (exactly one of
+  `permission`, `authenticated: true`, `public: true`; checked at definition time), each action has a
+  required `name`, unverified-email sessions count as anonymous in `public` actions, top-level unknown
+  keys are rejected and nested unknown keys are stripped.
+- **R30 — in `NODE_ENV=development` only, `/_next/*` and `/__nextjs*` are public** so dev tooling works
+  without a session. Production keeps the exact allowlist.
+- **R31 — token table refined for dark mode and form controls** (§5): `--primary-hover`,
+  `--danger-hover`, `--highlight-foreground`, `--secondary-foreground`, `--label-foreground`, `--input`
+  and `--warning` added (table above updated).
+- **R32 — the wordmark is Geist text,** not SVG paths, until a designer supplies vector art. The logo
+  mark stays SVG.
+- **R33 — no `class-variance-authority`** (pre-1.0); components use typed class maps. shadcn 4.21.x
+  rewrites the `@/lib/cn` alias on `add`; `docs/upgrading.md` has the check.
+- **R35 — the proxy answers 404 for `/dev/ui` in production before the session check;** E2E runs the
+  server with `NODE_ENV=production`; WebKit runs in CI only.
+- **R36 — the CI bundle-scan guard requires `DATABASE_URL`, `MIGRATION_DATABASE_URL` and
+  `ENCRYPTION_KEY`** to be set, rather than "any value" (pnpm injects its own variables).
+
+### Other Phase 0 facts that refine this spec
+
+- Local development may use the Neon `dev` branch, but **migrations are authored against the Docker
+  database** (`prisma migrate dev` needs a shadow database; only the local migrator has `CREATEDB`).
+  Neon receives migrations only via `prisma migrate deploy` (§7 Environments).
+- **Postgres 18 is required** (`uuidv7()` in the migrations). On Neon, `trask_app` and `trask_migrator`
+  are created by SQL before the first deploy, and `trask_migrator` gets `CREATE` on the database and on
+  schema `public`.
+- **RLS separates workspaces, not roles.** Any member can write at the database level; `assertCan` is the
+  role barrier. Ids are server-generated (unique checks run before RLS). The `User` table is outside RLS
+  until Phase 1 decides.
+- Libraries for later phases (Better Auth, TanStack Query, dnd-kit, cmdk) are not installed yet; knip
+  rejects unused dependencies. `@types/node` is pinned to the 24 line.
+- Spec §8 versions that differ: `@playwright/test` 1.63.0, `radix-ui` 1.6.7 (single package). shadcn
+  components are copied in; the CLI is run with `pnpm dlx`.
 
 ---
 
