@@ -14,6 +14,10 @@ import type { AuthPort } from "@/server/ports/auth";
 import type { Logger } from "@/server/ports/logger";
 
 export type AuthContext = { userId: string };
+/**
+ * The caller after their role in `workspaceId` was checked. Repositories for workspace-owned data take it and use
+ * `withWorkspace(ctx)` (src/db/tenant.ts), so the database confines the handler to this one workspace.
+ */
 export type WorkspaceCtx = { userId: string; workspaceId: string; role: Role };
 type PublicCtx = { userId: string | null };
 

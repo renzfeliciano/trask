@@ -1,4 +1,5 @@
-import { withTenant } from "@/db/tenant";
+import { withTenant, withWorkspace } from "@/db/tenant";
+import { createWorkspace } from "@/server/workspaces/membership-repository";
 import { inspectCurrentRole, rlsExemptions } from "../../../scripts/rls-exemption";
 import { adminDb, appDb, createUser, resetDb } from "../helpers/db";
 
@@ -182,17 +183,21 @@ describe("row-level security", () => {
       expect(table.policies, table.table).toBeGreaterThan(0);
     }
 
-    // Every policy filters on membership: USING always, WITH CHECK wherever rows can be written.
+    // Every policy filters on membership AND the transaction's workspace (when set): USING always, WITH CHECK
+    // wherever rows can be written (Ruling R39).
     const policies = await adminDb.$queryRaw<
       { table: string; name: string; cmd: string; qual: string | null; withCheck: string | null }[]
     >`
       SELECT tablename AS "table", policyname AS name, cmd, qual, with_check AS "withCheck"
       FROM pg_policies WHERE schemaname = 'public'`;
+    expect(policies).toHaveLength(13);
     for (const policy of policies) {
       const label = `${policy.table}.${policy.name}`;
-      expect(policy.qual, label).toMatch(/^app\.is_member\(/);
+      const key = policy.table === "Workspace" ? "id" : '"workspaceId"';
+      const expected = `(app.is_member(${key}) AND ((app.current_workspace_id() IS NULL) OR (${key} = app.current_workspace_id())))`;
+      expect(policy.qual, label).toBe(expected);
       if (policy.cmd === "ALL" || policy.cmd === "UPDATE")
-        expect(policy.withCheck, label).toMatch(/^app\.is_member\(/);
+        expect(policy.withCheck, label).toBe(expected);
     }
   });
 
@@ -212,12 +217,13 @@ describe("row-level security", () => {
     expect(functions.map((fn) => fn.name)).toEqual([
       "create_workspace",
       "current_user_id",
+      "current_workspace_id",
       "is_member",
     ]);
     for (const fn of functions) {
       expect(fn, fn.name).toMatchObject({ owner: "trask_migrator", publicExecute: false });
     }
-    for (const fn of functions.filter((f) => f.name !== "current_user_id")) {
+    for (const fn of functions.filter((f) => !f.name.startsWith("current_"))) {
       expect(fn, fn.name).toMatchObject({ definer: true, config: ["search_path=public, pg_temp"] });
     }
 
@@ -241,5 +247,132 @@ describe("row-level security", () => {
     );
     await expect(db.auditEvent.deleteMany()).rejects.toThrow(PERMISSION_DENIED);
     await expect(appDb.auditEvent.findMany()).rejects.toThrow(PERMISSION_DENIED);
+  });
+});
+
+describe("workspace-scoped row-level security (Ruling R39)", () => {
+  // U is OWNER of W1 and VIEWER of W2. createAction authorizes one workspace, so a repository running for U in W1
+  // must not reach W2's rows even though U is a member there.
+  let user: { id: string };
+  let w1: { workspaceId: string; boardId: string };
+  let w2: { workspaceId: string; boardId: string };
+
+  async function boardIn(workspaceId: string, name: string): Promise<string> {
+    const board = await adminDb.board.create({ data: { workspaceId, name, position: "a0" } });
+    return board.id;
+  }
+
+  beforeEach(async () => {
+    await resetDb();
+    user = await createUser();
+    const other = await createUser();
+    const ws1 = await createWorkspace({ userId: user.id }, { name: "One", slug: "w-one" });
+    const ws2 = await createWorkspace({ userId: other.id }, { name: "Two", slug: "w-two" });
+    await adminDb.workspaceMember.create({
+      data: { workspaceId: ws2.id, userId: user.id, role: "VIEWER" },
+    });
+    w1 = { workspaceId: ws1.id, boardId: await boardIn(ws1.id, "Roadmap one") };
+    w2 = { workspaceId: ws2.id, boardId: await boardIn(ws2.id, "Roadmap two") };
+  });
+
+  it("cannot read, update or delete another workspace's rows, even as its member", async () => {
+    const db = withWorkspace({ userId: user.id, workspaceId: w1.workspaceId });
+    expect((await db.board.findMany()).map((board) => board.id)).toEqual([w1.boardId]);
+    expect(await db.board.findFirst({ where: { id: w2.boardId } })).toBeNull();
+    expect((await db.workspace.findMany()).map((ws) => ws.id)).toEqual([w1.workspaceId]);
+    expect(
+      (await db.workspaceMember.findMany()).every((m) => m.workspaceId === w1.workspaceId),
+    ).toBe(true);
+
+    expect(
+      (await db.board.updateMany({ where: { id: w2.boardId }, data: { name: "Hijacked" } })).count,
+    ).toBe(0);
+    expect((await db.board.deleteMany({ where: { id: w2.boardId } })).count).toBe(0);
+    expect(
+      (await db.workspace.updateMany({ where: { id: w2.workspaceId }, data: { name: "Mine" } }))
+        .count,
+    ).toBe(0);
+
+    const untouched = await adminDb.board.findUniqueOrThrow({ where: { id: w2.boardId } });
+    expect(untouched.name).toBe("Roadmap two");
+    expect(
+      await adminDb.workspace.findUniqueOrThrow({ where: { id: w2.workspaceId } }),
+    ).toMatchObject({ name: "Two" });
+  });
+
+  it("cannot insert into or move rows into another workspace", async () => {
+    const db = withWorkspace({ userId: user.id, workspaceId: w1.workspaceId });
+    await expect(
+      db.board.create({ data: { workspaceId: w2.workspaceId, name: "Intrusion", position: "a1" } }),
+    ).rejects.toThrow(RLS_VIOLATION);
+    await expect(
+      db.board.update({ where: { id: w1.boardId }, data: { workspaceId: w2.workspaceId } }),
+    ).rejects.toThrow(RLS_VIOLATION);
+    expect(await adminDb.board.count({ where: { workspaceId: w2.workspaceId } })).toBe(1);
+  });
+
+  it("reads and writes the workspace it is scoped to", async () => {
+    const inW2 = withWorkspace({ userId: user.id, workspaceId: w2.workspaceId });
+    expect((await inW2.board.findMany()).map((board) => board.id)).toEqual([w2.boardId]);
+    expect(await inW2.board.findFirst({ where: { id: w1.boardId } })).toBeNull();
+
+    const inW1 = withWorkspace({ userId: user.id, workspaceId: w1.workspaceId });
+    await inW1.board.create({
+      data: { workspaceId: w1.workspaceId, name: "Next", position: "a1" },
+    });
+    expect(await adminDb.board.count({ where: { workspaceId: w1.workspaceId } })).toBe(2);
+  });
+
+  it("sees nothing in a workspace the user is not a member of", async () => {
+    const stranger = await createUser();
+    const db = withWorkspace({ userId: stranger.id, workspaceId: w1.workspaceId });
+    expect(await db.board.findMany()).toEqual([]);
+    expect(await db.workspace.findMany()).toEqual([]);
+  });
+
+  it("keeps withTenant for reads across the user's workspaces", async () => {
+    const boards = await withTenant({ userId: user.id }).board.findMany({ select: { id: true } });
+    expect(boards.map((board) => board.id).sort()).toEqual([w1.boardId, w2.boardId].sort());
+  });
+
+  it("normalizes the workspace id to lowercase and rejects malformed ids", async () => {
+    const db = withWorkspace({ userId: user.id, workspaceId: w1.workspaceId.toUpperCase() });
+    const [row] = await db.$queryRaw<{ workspaceId: string | null }[]>`
+      SELECT current_setting('app.workspace_id', true) AS "workspaceId"`;
+    expect(row?.workspaceId).toBe(w1.workspaceId);
+    expect((await db.board.findMany()).map((board) => board.id)).toEqual([w1.boardId]);
+
+    expect(() => withWorkspace({ userId: user.id, workspaceId: "' OR true --" })).toThrow(/UUID/);
+    expect(() => withWorkspace({ userId: "", workspaceId: w1.workspaceId })).toThrow(/UUID/);
+  });
+
+  it("no context still returns no rows", async () => {
+    expect(await appDb.board.findMany()).toEqual([]);
+    expect(await appDb.workspace.findMany()).toEqual([]);
+  });
+
+  it("workspace context does not leak across pooled queries", async () => {
+    const [inside] = await withWorkspace({ userId: user.id, workspaceId: w1.workspaceId })
+      .$queryRaw<
+      { pid: number; workspaceId: string | null }[]
+    >`SELECT pg_backend_pid() AS pid, app.current_workspace_id()::text AS "workspaceId"`;
+    expect(inside?.workspaceId).toBe(w1.workspaceId);
+
+    // node-postgres hands out the most recently released connection, so these bare queries reuse the one above.
+    const [after] = await appDb.$queryRaw<
+      { pid: number; userId: string | null; workspaceId: string | null }[]
+    >`
+      SELECT pg_backend_pid() AS pid, current_setting('app.user_id', true) AS "userId",
+             current_setting('app.workspace_id', true) AS "workspaceId"`;
+    expect(after?.pid).toBe(inside?.pid);
+    expect(after?.userId ?? "").toBe("");
+    expect(after?.workspaceId ?? "").toBe("");
+
+    // A cross-workspace read on the same connection right after is not narrowed by the earlier workspace scope.
+    const [tenant] = await withTenant({ userId: user.id }).$queryRaw<
+      { pid: number; workspaceId: string | null }[]
+    >`SELECT pg_backend_pid() AS pid, app.current_workspace_id()::text AS "workspaceId"`;
+    expect(tenant?.pid).toBe(inside?.pid);
+    expect(tenant?.workspaceId).toBeNull();
   });
 });
