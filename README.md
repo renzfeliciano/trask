@@ -82,6 +82,7 @@ value. `pnpm build` skips the check, so it needs no secrets.
 | `pnpm lint`             | ESLint, including the architecture boundaries and security bans                               |
 | `pnpm typecheck`        | `tsc --noEmit`                                                                                |
 | `pnpm format`           | Prettier, writes changes                                                                      |
+| `pnpm format:check`     | Prettier, checks only (CI)                                                                    |
 | `pnpm test`             | Unit tests (Vitest project `unit`); needs no database or env                                  |
 | `pnpm test:integration` | Integration tests against the Docker test database (Vitest project `integration`)             |
 | `pnpm e2e`              | Playwright: builds, serves on port 3100, runs mobile Chrome, mobile Safari and desktop Chrome |
